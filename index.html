@@ -269,7 +269,7 @@
    第 1 周（自 2026-08-08 起）只记录不控制：target/tdee 为 null，
    界面隐藏目标线与剩余额度（设计 §5.2/§8）。第 8 天由分析更新。 */
 var BUILD = {
-  version: "1.0.0",
+  version: "1.1.0",
   built: "2026-08-08",
   kcal_target: null,     // 第 8 天起 = 第 1 周实测均值 − 500，下限 1900
   tdee: null,            // 校准常数，随周报更新；不是当日实测消耗
@@ -455,16 +455,25 @@ function addEntry(foodId, portionLabel, grams, replaceId) {
   closeSheet();
   renderToday();
 }
-/* 占位条目：新食物当场估计（设计 §4.3/§5.3），不阻塞记录 */
+/* 占位条目：新食物当场估计（设计 §4.3/§5.3），不阻塞记录。
+   amount_note 记「吃了多少」，供之后按包装成分表精确回算。 */
+var AMOUNTS = ["全部", "一半", "三分之一", "三分之二"];
+var guessAmount = "全部";
 function openGuessSheet(prefill, editId) {
   var old = editId ? DB.log.find(function (e) { return e.id === editId; }) : null;
+  guessAmount = (old && old.amount_note) ? old.amount_note : "全部";
+  var amountBtns = AMOUNTS.map(function (a) {
+    return '<button data-act="pick-amount" data-a="' + a + '" aria-pressed="' + (a === guessAmount) + '">' + a + '</button>';
+  }).join("");
   openSheet(
     '<div class="sheet-h"><div class="nm">' + (editId ? "修改估计条目" : "先记一条估计") + '</div>' +
-    '<div class="meta">新食物入库前的占位记录，之后由分析回填精确值</div></div>' +
+    '<div class="meta">拍下外包装＋营养成分表存进「待入库」，之后按照片精确回算</div></div>' +
     '<div class="sheet-b" data-replace="' + (editId || "") + '">' +
       '<div class="field"><label>名称</label>' +
       '<input id="in-gname" type="text" placeholder="例：Tesco 意面沙拉" value="' + esc(old ? old.name_raw : prefill) + '"></div>' +
-      '<div class="field"><label>估计热量（kcal）</label>' +
+      '<div class="field"><label>吃了多少</label>' +
+      '<div class="seg" style="grid-template-columns:repeat(4,1fr)" id="amount-seg">' + amountBtns + '</div></div>' +
+      '<div class="field"><label>估计热量（你吃掉的部分，kcal）</label>' +
       '<input id="in-gkcal" type="number" inputmode="numeric" min="1" max="5000" value="' + (old && old.kcal ? old.kcal : "") + '"></div>' +
       '<button class="btn solid" data-act="confirm-guess">' + (editId ? "保存修改" : "记录") + '</button>' +
       (editId ? '<button class="btn danger" data-act="delete-entry">删除这条记录</button>' : '') +
@@ -477,12 +486,13 @@ function confirmGuess(editId) {
   if (!name || !(kcal > 0)) return;
   if (editId) {
     var idx = DB.log.findIndex(function (e) { return e.id === editId; });
-    if (idx >= 0) { DB.log[idx].name_raw = name; DB.log[idx].kcal = kcal; }
+    if (idx >= 0) { DB.log[idx].name_raw = name; DB.log[idx].kcal = kcal; DB.log[idx].amount_note = guessAmount; }
   } else {
     DB.log.push({
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       ts: nowTs(), food_id: null, name_raw: name, grams: null,
-      kcal: kcal, protein: null, confidence: "guess", pending: true
+      kcal: kcal, protein: null, confidence: "guess", pending: true,
+      amount_note: guessAmount
     });
   }
   persist(K.log, DB.log);
@@ -565,7 +575,7 @@ function renderToday() {
         '<span class="nm"><i class="dot ' + (f.confidence === "high" ? "hi" : "lo") + '"></i><span>' + esc(f.name) + '</span></span>' +
         '<span class="kc">' + esc(dp.label) + ' · ' + kcalOf(f, dp.grams) + '</span></button>';
     });
-    if (!hits.length) h += '<div class="r-none">食物库里没有「' + esc(searchQuery) + '」。拍下营养成分表存进「待入库」，下次分析时入库；现在先估一条不中断记录：</div>';
+    if (!hits.length) h += '<div class="r-none">食物库里没有「' + esc(searchQuery) + '」。拍两张照片（外包装＋营养成分表）存进「待入库」，之后按照片精确回算；现在先估一条不中断记录：</div>';
     h += '<button class="r-guess" data-act="open-guess">＋ 先记一条估计（' + esc(searchQuery) + '）</button></div>';
   } else {
     h += '<div class="chips">' + chipCandidates().map(function (f) {
@@ -590,7 +600,9 @@ function renderToday() {
       group.forEach(function (e) {
         var dotCls = e.pending ? "guess" : (e.confidence === "high" ? "hi" : "lo");
         var nm = e.food_id ? e.name : e.name_raw + "（估）";
-        var q = e.pending ? "待入库" : esc(e.portion || (e.grams + " g"));
+        var q = e.pending
+          ? "待入库" + (e.amount_note && e.amount_note !== "全部" ? " · " + esc(e.amount_note) : "")
+          : esc(e.portion || (e.grams + " g"));
         h += '<button class="item" data-act="edit-entry" data-id="' + e.id + '">' +
           '<span class="nm"><i class="dot ' + dotCls + '"></i><span class="t">' + esc(nm) + '</span>' +
           '<span class="q">' + q + '</span></span><span class="kc">' + (e.kcal || 0) + '</span></button>';
@@ -678,7 +690,7 @@ function renderLibrary() {
   h += '<div class="mod"><div class="mod-title">图例</div>' +
     '<div class="rowline"><span class="k"><i class="dot hi" style="display:inline-block"></i> 包装成分表</span><span class="v">误差 &lt;5%</span></div>' +
     '<div class="rowline"><span class="k"><i class="dot lo" style="display:inline-block"></i> 通用成分表 / 目测</span><span class="v">误差 20–30%</span></div>' +
-    '<div class="note" style="padding-top:6px">新食物：拍营养成分表存进手机的「待入库」相册文件夹，下次分析时批量入库，页面随之更新。</div></div>';
+    '<div class="note" style="padding-top:6px">新食物：拍两张照片（外包装＋营养成分表）存进 OneDrive 的「食物照片/待入库」，下次分析时批量入库，页面随之更新。</div></div>';
   el.innerHTML = h;
   var li = document.getElementById("in-lib");
   li.addEventListener("input", function () {
@@ -766,6 +778,12 @@ document.addEventListener("click", function (ev) {
     if (g > 0) addEntry(foodId, Math.round(g) + " g", g, replaceId);
   }
   else if (act === "open-guess") openGuessSheet(searchQuery, null);
+  else if (act === "pick-amount") {
+    guessAmount = b.getAttribute("data-a");
+    document.querySelectorAll('#amount-seg button').forEach(function (x) {
+      x.setAttribute("aria-pressed", String(x.getAttribute("data-a") === guessAmount));
+    });
+  }
   else if (act === "confirm-guess") confirmGuess(replaceId);
   else if (act === "edit-entry") {
     var id = b.getAttribute("data-id");
