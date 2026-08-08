@@ -269,7 +269,7 @@
    第 1 周（自 2026-08-08 起）只记录不控制：target/tdee 为 null，
    界面隐藏目标线与剩余额度（设计 §5.2/§8）。第 8 天由分析更新。 */
 var BUILD = {
-  version: "1.1.0",
+  version: "1.1.1",
   built: "2026-08-08",
   kcal_target: null,     // 第 8 天起 = 第 1 周实测均值 − 500，下限 1900
   tdee: null,            // 校准常数，随周报更新；不是当日实测消耗
@@ -318,7 +318,11 @@ var FOOD_LIBRARY = [
   { id: "cola", name: "可乐", per_100g: { kcal: 42, protein: 0, fat: 0, carb: 10.6 },
     portions: [{ label: "1 罐 330ml", grams: 330 }], default_portion: "1 罐 330ml", confidence: "low" },
   { id: "crisps", name: "薯片（小包）", per_100g: { kcal: 530, protein: 6.0, fat: 31.0, carb: 53.0 },
-    portions: [{ label: "1 小包 25g", grams: 25 }], default_portion: "1 小包 25g", confidence: "low" }
+    portions: [{ label: "1 小包 25g", grams: 25 }], default_portion: "1 小包 25g", confidence: "low" },
+  { id: "ms-prawn-salad", name: "M&S 鲜虾沙拉（玛丽玫瑰酱）", per_100g: { kcal: 93, protein: 4.5, fat: 3.5, carb: 10.9 },
+    portions: [{ label: "半盒", grams: 200 }, { label: "整盒", grams: 400 }], default_portion: "半盒", confidence: "high" },
+  { id: "ms-chicken-chipotle-sub", name: "M&S 鸡肉辣椒蛋黄酱三明治", per_100g: { kcal: 224, protein: 9.1, fat: 8.0, carb: 28.1 },
+    portions: [{ label: "整包", grams: 192 }, { label: "半包", grams: 96 }], default_portion: "整包", confidence: "high" }
 ];
 
 /* ── 存储（键名一经发布不得更改，设计 §4.6）──────────────── */
