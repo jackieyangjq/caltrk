@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>存储探针 C · GitHub Pages</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, "PingFang SC", sans-serif;
+    margin: 0; padding: 16px; max-width: 560px; margin-inline: auto;
+    background: #f5f5f7; color: #1d1d1f;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #1c1c1e; color: #f2f2f7; }
+    .card { background: #2c2c2e !important; }
+  }
+  .card {
+    background: #fff; border-radius: 14px; padding: 16px; margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  h1 { font-size: 20px; margin: 4px 0 12px; }
+  .ver { font-size: 13px; opacity: .6; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(128,128,128,.2); }
+  .row:last-child { border-bottom: none; }
+  .k { opacity: .7; flex-shrink: 0; }
+  .v { font-weight: 600; text-align: right; word-break: break-all; }
+  .ok { color: #34a853; }
+  .bad { color: #ea4335; }
+  .big { font-size: 17px; }
+  button {
+    width: 100%; padding: 14px; font-size: 17px; font-weight: 600;
+    border: none; border-radius: 12px; background: #0a84ff; color: #fff;
+  }
+  .hint { font-size: 13px; opacity: .6; margin-top: 8px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<h1>存储探针 C <span class="ver" id="pv"></span></h1>
+
+<div class="card" id="verdict"></div>
+
+<div class="card">
+  <div class="row"><span class="k">v1 写入的值</span><span class="v big" id="r-value"></span></div>
+  <div class="row"><span class="k">见过的版本</span><span class="v" id="r-versions"></span></div>
+  <div class="row"><span class="k">打开次数</span><span class="v" id="r-opens"></span></div>
+  <div class="row"><span class="k">首次打开时间</span><span class="v" id="r-first"></span></div>
+  <div class="row"><span class="k">本页全部存储键</span><span class="v" id="r-keys"></span></div>
+</div>
+
+<div class="card">
+  <button id="btn-export">导出测试文件</button>
+  <div class="hint">点一下会下载一个小 JSON 文件。请留意 iPhone 把它存到了哪里（一般在「文件」App 的「下载项」）。</div>
+</div>
+
+<script>
+(function () {
+  var PAGE_VERSION = "v1";           // 重发时改这里
+  var KEY = "caltrk7f3a_probe";
+  document.getElementById("pv").textContent = "· 页面版本 " + PAGE_VERSION;
+
+  var blob = null;
+  try { blob = JSON.parse(localStorage.getItem(KEY)); } catch (e) { blob = null; }
+  if (!blob || typeof blob !== "object") {
+    blob = { firstSeen: new Date().toISOString(), opens: 0, versions: [], v1value: null };
+  }
+  blob.opens += 1;
+  if (blob.versions.indexOf(PAGE_VERSION) === -1) blob.versions.push(PAGE_VERSION);
+  if (PAGE_VERSION === "v1" && !blob.v1value) blob.v1value = "written-ok";
+  var saveFailed = false;
+  try { localStorage.setItem(KEY, JSON.stringify(blob)); } catch (e) { saveFailed = true; }
+
+  var elV = document.getElementById("r-value");
+  if (blob.v1value) { elV.textContent = blob.v1value; elV.className = "v big ok"; }
+  else { elV.textContent = "读不到"; elV.className = "v big bad"; }
+  document.getElementById("r-versions").textContent = blob.versions.join(" → ");
+  document.getElementById("r-opens").textContent = blob.opens;
+  document.getElementById("r-first").textContent = blob.firstSeen.replace("T", " ").slice(0, 16);
+  var keys = [];
+  for (var i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+  document.getElementById("r-keys").textContent = keys.length ? keys.join(", ") : "（空）";
+
+  var verdict = document.getElementById("verdict");
+  if (saveFailed) {
+    verdict.innerHTML = '<span class="bad big">⚠️ 本地存储写入失败</span><div class="hint">可能是无痕模式或存储被禁用。</div>';
+  } else if (PAGE_VERSION === "v1") {
+    verdict.innerHTML = '<span class="big">📌 v1 基准已写入</span><div class="hint">等页面更新到 v2 后再打开：上面「v1 写入的值」若仍是绿色，就证明部署更新不清数据。</div>';
+  } else if (blob.v1value && blob.versions.indexOf("v1") !== -1) {
+    verdict.innerHTML = '<span class="ok big">✅ 结论：部署更新不清数据</span><div class="hint">v1 写的值在 ' + PAGE_VERSION + ' 下仍然读得到。</div>';
+  } else {
+    verdict.innerHTML = '<span class="bad big">❌ 结论：v1 数据没有存活</span><div class="hint">要么部署清空了存储，要么此刻用的浏览器和 v1 那次不同。</div>';
+  }
+
+  document.getElementById("btn-export").addEventListener("click", function () {
+    var data = JSON.stringify({ 导出测试: "成功", 页面版本: PAGE_VERSION, 时间: new Date().toISOString(), 快照: blob }, null, 2);
+    var url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
+    var a = document.createElement("a");
+    a.href = url; a.download = "caltrk-导出测试.json";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+  });
+})();
+</script>
+</body>
+</html>
