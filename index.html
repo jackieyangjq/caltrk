@@ -55,7 +55,7 @@
 
 <script>
 (function () {
-  var PAGE_VERSION = "v2";           // 重发时改这里
+  var PAGE_VERSION = "v3";           // 重发时改这里
   var KEY = "caltrk7f3a_probe";
   document.getElementById("pv").textContent = "· 页面版本 " + PAGE_VERSION;
 
@@ -80,15 +80,17 @@
   for (var i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
   document.getElementById("r-keys").textContent = keys.length ? keys.join(", ") : "（空）";
 
+  // 判定与具体版本号解耦：iOS 里「主屏幕图标」和 Safari 是两个独立存储容器，
+  // 各容器见到的首个版本不同，只看「是否跨过部署边界」才不会误报。
   var verdict = document.getElementById("verdict");
   if (saveFailed) {
     verdict.innerHTML = '<span class="bad big">⚠️ 本地存储写入失败</span><div class="hint">可能是无痕模式或存储被禁用。</div>';
-  } else if (PAGE_VERSION === "v1") {
-    verdict.innerHTML = '<span class="big">📌 v1 基准已写入</span><div class="hint">等页面更新到 v2 后再打开：上面「v1 写入的值」若仍是绿色，就证明部署更新不清数据。</div>';
-  } else if (blob.v1value && blob.versions.indexOf("v1") !== -1) {
-    verdict.innerHTML = '<span class="ok big">✅ 结论：部署更新不清数据</span><div class="hint">v1 写的值在 ' + PAGE_VERSION + ' 下仍然读得到。</div>';
+  } else if (blob.versions.length >= 2) {
+    verdict.innerHTML = '<span class="ok big">✅ 结论：部署更新不清数据</span><div class="hint">本容器的数据从 ' + blob.versions[0] + ' 一路活到了 ' + PAGE_VERSION + '。</div>';
+  } else if (blob.opens >= 2) {
+    verdict.innerHTML = '<span class="big">⏳ 存储在本容器内持续（已打开 ' + blob.opens + ' 次）</span><div class="hint">还没跨过部署边界，等下一版发布后再打开一次就能下结论。</div>';
   } else {
-    verdict.innerHTML = '<span class="bad big">❌ 结论：v1 数据没有存活</span><div class="hint">要么部署清空了存储，要么此刻用的浏览器和 v1 那次不同。</div>';
+    verdict.innerHTML = '<span class="big">📌 本容器首次打开，基准已写入</span><div class="hint">如果你明明在这里打开过多次却总显示这个，说明存储每次都被清空。</div>';
   }
 
   document.getElementById("btn-export").addEventListener("click", function () {
