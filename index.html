@@ -377,7 +377,7 @@
    取原设计下限 1900。攒满一周完整记录+新导出后，周报用能量平衡
    反推真实消耗并校准这两个数。 */
 var BUILD = {
-  version: "1.6.1",
+  version: "1.7.0",
   built: "2026-09-01",
   kcal_target: 1900,     // 减脂目标：82.5kg → 78kg，每周约 −0.4~0.5kg
   tdee: 2300,            // 校准常数，随周报更新；不是当日实测消耗
@@ -561,33 +561,40 @@ function saveAiKey() {
   var inp = document.getElementById("ai-key-in");
   if (!inp) return;
   var v = inp.value.trim();
-  if (v) AI.key = v; else delete AI.key;
+  if (v === "清除" || v.toLowerCase() === "clear") delete AI.key;
+  else if (v) AI.key = v;
+  /* 密钥框留空 = 不改密钥，这样单独换模型不用重贴密钥 */
+  var mEl = document.getElementById("ai-model-in");
+  var m = mEl ? mEl.value.trim() : "";
+  AI.model = m || "gpt-4o-mini";
+  var m2El = document.getElementById("ai-model2-in");
+  var m2 = m2El ? m2El.value.trim() : "";
+  if (m2) AI.model2 = m2; else delete AI.model2;
   persist(AI_CFG_STORE, AI);
   renderExport();
 }
 var AI_SYS_LABEL = "你是营养标签识别器。只输出一个 JSON 对象，不要任何其他文字、不要代码块标记。格式：" +
   '{"name":"品牌+食物名(中文)","per_100g":{"kcal":0,"protein":0,"fat":0,"carb":0},' +
-  '"portions":[{"label":"整包","grams":0}],"default_portion":"整包","note":"哪些数字是标签实读、哪些是估算"}。' +
+  '"portions":[{"label":"整包","grams":0}],"default_portion":"整包",' +
+  '"pack_grams":整包或每份的克数(标签没写就用null),"pack_kcal":同一份量对应的总热量(没写就用null),' +
+  '"note":"哪些数字是标签实读、哪些是估算"}。' +
   "规则：多张照片是同一个食物的不同面（外包装/成分表），合并成一条；per_100g 全部用每100克数值；" +
-  "标签只给千焦(kJ)时除以4.184换成kcal；整包热量要和每100g×重量交叉验证；" +
+  "标签只给千焦(kJ)时除以4.184换成kcal；pack_grams 和 pack_kcal 必须对应同一份量，照抄标签不要换算；" +
   "看不清或没有的字段按同类食物估算并在 note 里说明；portions 给1-3个常用份量（整包/一份/半盒等，含克数）。";
 var AI_SYS_MEAL = "你是饮食热量估算器。用户给出一餐的照片或文字描述。只输出一个 JSON 对象，不要任何其他文字、不要代码块标记。格式：" +
   '{"items":[{"name":"食物名(中文)","grams":0,"per_100g":{"kcal":0,"protein":0,"fat":0,"carb":0}}],"note":"整体假设与不确定性"}。' +
   "规则：把这一餐拆成1-6样食物，每样给估计克数(grams)和每100克营养(per_100g)；多张照片属于同一餐；" +
   "照片里有营养成分表时优先用标签数值；克数按常见餐具和分量估；拿不准就取常见值并在 note 里说明。";
 var aiBusy = false;
-function aiChat(sys, userContent, onOk) {
-  if (aiBusy) return;
-  aiBusy = true;
-  renderTodayTop();   /* 真正发请求了才显示「识别中」 */
+function aiRequest(model, sys, userContent) {
   var ctrl = ("AbortController" in window) ? new AbortController() : null;
   var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 60000) : null;
-  fetch(AI.base + "/v1/chat/completions", {
+  return fetch(AI.base + "/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": "Bearer " + AI.key },
     signal: ctrl ? ctrl.signal : undefined,
     body: JSON.stringify({
-      model: AI.model, temperature: 0,
+      model: model, temperature: 0,
       messages: [{ role: "system", content: sys }, { role: "user", content: userContent }]
     })
   }).then(function (r) {
@@ -596,14 +603,68 @@ function aiChat(sys, userContent, onOk) {
   }).then(function (j) {
     var txt = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
     if (!txt) throw new Error("空回复");
-    onOk(txt);
+    return txt;
+  }).finally(function () { if (timer) clearTimeout(timer); });
+}
+/* onOk 可以返回 Promise（比如复核模型的第二次调用），「识别中」会一直显示到全部完成 */
+function aiChat(sys, userContent, onOk) {
+  if (aiBusy) return;
+  aiBusy = true;
+  renderTodayTop();   /* 真正发请求了才显示「识别中」 */
+  aiRequest(AI.model, sys, userContent).then(function (txt) {
+    return onOk(txt);
   }).catch(function (e) {
     alert("AI 识别失败：" + (e && e.message ? e.message : e) + "\n可以先用「记一条估计」，回头再补。");
   }).finally(function () {
     aiBusy = false;
-    if (timer) clearTimeout(timer);
     renderTodayTop();
   });
+}
+/* ── 免费的算术自检：抓「千焦当大卡」「每份当每100g」这两类最常见错 ── */
+function atwaterWarn(per, prefix) {
+  var calc = 4 * per.protein + 4 * per.carb + 9 * per.fat;
+  if (per.kcal >= 40 && calc > 0 && Math.abs(calc - per.kcal) / per.kcal > 0.3) {
+    return prefix + "热量和碳蛋脂对不上（标 " + per.kcal + "，按碳蛋脂算约 " + Math.round(calc) + "）";
+  }
+  return null;
+}
+function validateFoodSpec(spec) {
+  var warns = [], oks = [];
+  var aw = atwaterWarn(spec.per_100g, "每100g ");
+  if (aw) warns.push(aw);
+  if (spec.pack_grams > 0 && spec.pack_kcal > 0) {
+    var calcPack = spec.per_100g.kcal * spec.pack_grams / 100;
+    if (Math.abs(calcPack - spec.pack_kcal) / spec.pack_kcal > 0.12) {
+      warns.push("整包交叉验证不一致（每100g×" + spec.pack_grams + "g≈" + Math.round(calcPack) +
+        "，标签写 " + Math.round(spec.pack_kcal) + "）——可能把每份数值当成了每100g，建议对着标签核一遍再用");
+    } else {
+      oks.push("整包交叉验证一致");
+    }
+  } else {
+    oks.push("标签无整包热量，未能交叉验证");
+  }
+  return { warns: warns, oks: oks };
+}
+function compareSpecs(a, b) {
+  var diffs = [];
+  if (Math.abs(a.per_100g.kcal - b.per_100g.kcal) / Math.max(a.per_100g.kcal, 1) > 0.12) {
+    diffs.push("kcal " + a.per_100g.kcal + " vs " + b.per_100g.kcal);
+  }
+  ["protein", "fat", "carb"].forEach(function (k) {
+    var d = Math.abs(a.per_100g[k] - b.per_100g[k]);
+    if (d > Math.max(2, a.per_100g[k] * 0.2)) diffs.push(k + " " + a.per_100g[k] + " vs " + b.per_100g[k]);
+  });
+  return diffs.length ? ["复核模型读数不同：" + diffs.join("、") + "——建议对着标签核一遍"] : [];
+}
+function finishAddFood(spec, warns, oks) {
+  var note = "AI 识别：" + spec.note;
+  if (oks && oks.length) note += "；" + oks.join("；");
+  if (warns.length) {
+    note += "；⚠ " + warns.join("；");
+    alert("入库成功，但有疑点：\n· " + warns.join("\n· "));
+  }
+  spec.note = note.slice(0, 300);
+  aiAddFood(spec);
 }
 function aiParseFood(txt) {
   var s = String(txt).replace(/```json|```/g, "").trim();
@@ -621,8 +682,10 @@ function aiParseFood(txt) {
   }).slice(0, 3).map(function (x) { return { label: String(x.label).slice(0, 12), grams: Math.round(Number(x.grams)) }; }) : [];
   if (!ports.length) ports = [{ label: "100 g", grams: 100 }];
   var dp = ports.some(function (x) { return x.label === o.default_portion; }) ? o.default_portion : ports[0].label;
+  function optNum(x, lo, hi) { x = Number(x); return (isFinite(x) && x >= lo && x <= hi) ? x : null; }
   return { name: o.name.slice(0, 30), per_100g: { kcal: Math.round(kcal), protein: pr, fat: ft, carb: cb },
-           portions: ports, default_portion: dp, note: String(o.note || "").slice(0, 120) };
+           portions: ports, default_portion: dp, note: String(o.note || "").slice(0, 120),
+           pack_grams: optNum(o.pack_grams, 1, 5000), pack_kcal: optNum(o.pack_kcal, 1, 10000) };
 }
 function aiAddFood(spec) {
   var f = { id: "uf-" + Date.now().toString(36), name: spec.name, per_100g: spec.per_100g,
@@ -653,7 +716,14 @@ function aiParseMeal(txt) {
       per_100g: { kcal: Math.round(kcal), protein: m(it.per_100g.protein), fat: m(it.per_100g.fat), carb: m(it.per_100g.carb) } });
   }
   if (!items.length) return null;
-  return { items: items, note: String(o.note || "").slice(0, 160) };
+  var note = String(o.note || "").slice(0, 160);
+  var mealWarns = [];
+  items.forEach(function (it) {
+    var w = atwaterWarn(it.per_100g, it.name + " ");
+    if (w) mealWarns.push(w);
+  });
+  if (mealWarns.length) note += "；⚠ " + mealWarns.join("；");
+  return { items: items, note: note.slice(0, 300) };
 }
 var MEAL_DRAFT = null;
 function mealItemKcal(it) { return it.grams > 0 ? Math.round(it.per_100g.kcal * it.grams / 100) : 0; }
@@ -734,7 +804,20 @@ function aiPhotosReady(urls) {
     aiChat(AI_SYS_LABEL, content, function (txt) {
       var spec = aiParseFood(txt);
       if (!spec) { alert("AI 回复解析失败，换张更清楚的照片试试。"); return; }
-      aiAddFood(spec);
+      var v = validateFoodSpec(spec);
+      if (!AI.model2) { finishAddFood(spec, v.warns, v.oks); return; }
+      /* 可选的第二模型复核：同样的照片再读一遍，对比读数 */
+      return aiRequest(AI.model2, AI_SYS_LABEL, content).then(function (txt2) {
+        var spec2 = aiParseFood(txt2);
+        if (spec2) {
+          var d = compareSpecs(spec, spec2);
+          if (d.length) v.warns = v.warns.concat(d); else v.oks.push("双模型复核一致");
+        } else v.warns.push("复核模型回复无法解析，未完成复核");
+        finishAddFood(spec, v.warns, v.oks);
+      }).catch(function () {
+        v.warns.push("复核模型调用失败，未完成复核");
+        finishAddFood(spec, v.warns, v.oks);
+      });
     });
   } else {
     content.push({ type: "text", text: "估算这一餐（" + urls.length + " 张照片为同一餐），按系统要求输出 JSON。" });
@@ -1411,12 +1494,20 @@ function renderExport() {
     '<div class="mod"><div class="mod-title">AI 识别（自带密钥）</div>' +
     '<div class="rowline"><span class="k">状态</span><span class="v">' +
       (aiReady() ? "已启用 · " + AI.model : "未设置") + '</span></div>' +
-    '<input id="ai-key-in" type="password" autocomplete="off" placeholder="粘贴 ChatAnywhere 密钥（sk- 开头）" ' +
-      'style="width:100%;margin:8px 0;padding:10px;border:1px solid var(--hair);border-radius:8px;background:var(--card);color:inherit;font-size:14px">' +
-    '<button class="btn solid" data-act="save-ai-key">保存密钥</button>' +
+    '<input id="ai-key-in" type="password" autocomplete="off" placeholder="粘贴密钥（留空=不改；输「清除」=删掉）" ' +
+      'style="width:100%;margin:8px 0 6px;padding:10px;border:1px solid var(--hair);border-radius:8px;background:var(--card);color:inherit;font-size:14px">' +
+    '<input id="ai-model-in" type="text" autocomplete="off" value="' + esc(AI.model || "gpt-4o-mini") + '" ' +
+      'style="width:100%;margin:0 0 6px;padding:10px;border:1px solid var(--hair);border-radius:8px;background:var(--card);color:inherit;font-size:14px" ' +
+      'placeholder="识别模型，默认 gpt-4o-mini">' +
+    '<input id="ai-model2-in" type="text" autocomplete="off" value="' + esc(AI.model2 || "") + '" ' +
+      'style="width:100%;margin:0 0 8px;padding:10px;border:1px solid var(--hair);border-radius:8px;background:var(--card);color:inherit;font-size:14px" ' +
+      'placeholder="复核模型（可选，留空=不复核）">' +
+    '<button class="btn solid" data-act="save-ai-key">保存设置</button>' +
     '<div class="note">密钥只存在这台手机的浏览器里：不进导出文件、不进代码仓库，页面从手机直连 ChatAnywhere。' +
-    '保存后「今日」页会出现「AI 记录」栏：拍这一餐（先确认再记录）、拍成分表入库、文字估算。' +
-    '识别出的包装食物存入你的个人库（搜索可见、标为估算、随导出带出）。填空保存 = 清除密钥。</div></div>' +
+    '「今日」页的「AI 记录」栏：拍这一餐（先确认再记录）、拍成分表入库、文字估算。' +
+    '每次成分表入库都会自动做算术交叉验证（整包热量 vs 每100g×重量、热量 vs 碳蛋脂），对不上会当场弹提醒。' +
+    '想再稳一点：识别模型换 gpt-4.1-mini 或 gpt-4o（名称以 ChatAnywhere 支持为准），或在复核模型里填第二个模型，' +
+    '同一批照片会读两遍、读数不一致会提醒（费用×2，一次也就几分钱）。</div></div>' +
     '<div class="mod"><button class="btn solid" data-act="do-export">导出全部数据</button>' +
     '<div class="note">每周一次。文件会出现在「文件」App 的下载项里，' +
     '打开 OneDrive 把它移到 <b style="font-family:var(--f-num)">健康数据/calorie-tracker/exports/</b>。' +
