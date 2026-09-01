@@ -345,8 +345,8 @@
    第 1 周（自 2026-08-08 起）只记录不控制：target/tdee 为 null，
    界面隐藏目标线与剩余额度（设计 §5.2/§8）。第 8 天由分析更新。 */
 var BUILD = {
-  version: "1.2.0",
-  built: "2026-08-31",
+  version: "1.3.1",
+  built: "2026-09-01",
   kcal_target: null,     // 第 8 天起 = 第 1 周实测均值 − 500，下限 1900
   tdee: null,            // 校准常数，随周报更新；不是当日实测消耗
   protein_target: 150
@@ -357,8 +357,8 @@ var BUILD = {
 var FOOD_LIBRARY = [
   { id: "oats-dry", name: "燕麦片（干）", per_100g: { kcal: 375, protein: 11.0, fat: 8.0, carb: 60.0 },
     portions: [{ label: "1 小袋", grams: 27 }, { label: "1 碗（干）", grams: 40 }], default_portion: "1 小袋", confidence: "low" },
-  { id: "whole-milk", name: "全脂牛奶", per_100g: { kcal: 64, protein: 3.3, fat: 3.6, carb: 4.8 },
-    portions: [{ label: "1 杯 250ml", grams: 250 }, { label: "1 小盒 200ml", grams: 200 }], default_portion: "1 杯 250ml", confidence: "low" },
+  { id: "whole-milk", name: "全脂牛奶", per_100g: { kcal: 66, protein: 3.5, fat: 3.7, carb: 4.7 },
+    portions: [{ label: "1 杯 250ml", grams: 250 }, { label: "1 小盒 200ml", grams: 200 }], default_portion: "1 杯 250ml", confidence: "high" },
   { id: "egg-boiled", name: "鸡蛋（水煮）", per_100g: { kcal: 155, protein: 12.6, fat: 10.6, carb: 1.1 },
     portions: [{ label: "1 个", grams: 50 }, { label: "2 个", grams: 100 }], default_portion: "1 个", confidence: "low" },
   { id: "wholemeal-bread", name: "全麦面包", per_100g: { kcal: 247, protein: 11.0, fat: 3.0, carb: 41.0 },
@@ -367,6 +367,8 @@ var FOOD_LIBRARY = [
     portions: [{ label: "1 片", grams: 38 }, { label: "2 片", grams: 76 }], default_portion: "1 片", confidence: "low" },
   { id: "yogurt-whole", name: "全脂原味酸奶", per_100g: { kcal: 61, protein: 3.5, fat: 3.3, carb: 4.7 },
     portions: [{ label: "1 小杯 125g", grams: 125 }, { label: "1 大杯 170g", grams: 170 }], default_portion: "1 小杯 125g", confidence: "low" },
+  { id: "granola", name: "燕麦脆 granola（通用品牌）", per_100g: { kcal: 471, protein: 9.0, fat: 18.0, carb: 64.0 },
+    portions: [{ label: "1 份约 30g", grams: 30 }, { label: "2 勺约 40g", grams: 40 }], default_portion: "1 份约 30g", confidence: "low" },
   { id: "banana", name: "香蕉（去皮）", per_100g: { kcal: 89, protein: 1.1, fat: 0.3, carb: 22.8 },
     portions: [{ label: "1 根（中）", grams: 118 }, { label: "1 根（大）", grams: 136 }], default_portion: "1 根（中）", confidence: "low" },
   { id: "apple", name: "苹果（去核）", per_100g: { kcal: 52, protein: 0.3, fat: 0.2, carb: 13.8 },
@@ -398,7 +400,19 @@ var FOOD_LIBRARY = [
   { id: "ms-prawn-salad", name: "M&S 鲜虾沙拉（玛丽玫瑰酱）", per_100g: { kcal: 93, protein: 4.5, fat: 3.5, carb: 10.9 },
     portions: [{ label: "半盒", grams: 200 }, { label: "整盒", grams: 400 }], default_portion: "半盒", confidence: "high" },
   { id: "ms-chicken-chipotle-sub", name: "M&S 鸡肉辣椒蛋黄酱三明治", per_100g: { kcal: 224, protein: 9.1, fat: 8.0, carb: 28.1 },
-    portions: [{ label: "整包", grams: 192 }, { label: "半包", grams: 96 }], default_portion: "整包", confidence: "high" }
+    portions: [{ label: "整包", grams: 192 }, { label: "半包", grams: 96 }], default_portion: "整包", confidence: "high" },
+  { id: "tesco-strawberry-granola-yogurt-pot", name: "Tesco 草莓燕麦希腊酸奶杯", per_100g: { kcal: 146, protein: 4.5, fat: 5.0, carb: 18.0 },
+    portions: [{ label: "半杯", grams: 90 }, { label: "整杯", grams: 180 }], default_portion: "整杯", confidence: "high" },
+  { id: "tesco-chicken-salad-lemon-pepper-mayo", name: "Tesco 鸡肉沙拉三明治（柠檬胡椒蛋黄酱）", per_100g: { kcal: 201, protein: 12.2, fat: 6.1, carb: 23.2 },
+    portions: [{ label: "整份", grams: 202 }], default_portion: "整份", confidence: "high" },
+  { id: "ms-dukkah-chicken-bowl", name: "M&S Dukkah 香料烤鸡藜麦碗", per_100g: { kcal: 122, protein: 7.6, fat: 6.2, carb: 7.6 },
+    portions: [{ label: "整盒", grams: 305 }], default_portion: "整盒", confidence: "high" },
+  { id: "ms-pasta-bowl-chicken-caesar", name: "M&S 鸡肉凯撒意面碗", per_100g: { kcal: 169, protein: 7.0, fat: 8.0, carb: 17.0 },
+    portions: [{ label: "整份", grams: 280 }], default_portion: "整份", confidence: "high" },
+  { id: "tesco-beef-quarter-pounder", name: "Tesco 英国牛肉厚汉堡饼（4 只装）", per_100g: { kcal: 302, protein: 18.9, fat: 22.8, carb: 4.8 },
+    portions: [{ label: "1 个（生重）", grams: 97 }, { label: "整包 4 个（生重）", grams: 388 }], default_portion: "1 个（生重）", confidence: "high" },
+  { id: "tesco-finest-smoked-haddock-fishcake", name: "Tesco Finest 烟熏黑线鳕鱼饼（芝士夹心）", per_100g: { kcal: 201, protein: 10.2, fat: 9.9, carb: 17.8 },
+    portions: [{ label: "1 个", grams: 136 }, { label: "整包 2 个", grams: 271 }], default_portion: "1 个", confidence: "high" }
 ];
 
 /* ── 存储（键名一经发布不得更改，设计 §4.6）──────────────── */
@@ -447,6 +461,18 @@ function persist(key, val) {
   catch (e) { storeBroken = true; alert("本地存储写入失败，这条记录可能没有保存住。请截图并尽快导出。"); }
 }
 
+/* ── AI 识别（可选功能，BYOK：用户在本页设置里粘贴自己的 ChatAnywhere
+   密钥，仅保存在用户自己设备的浏览器存储中；页面从浏览器直连该服务，
+   密钥不写入代码仓库、不包含在导出文件里，也不经过任何中间人）────── */
+var AI_CFG_STORE = "caltrk7f3a.ai.v1";
+var UF_KEY = "caltrk7f3a.userfoods.v1";   // 手机上拍照入库的个人食物，随导出带出
+var AI = loadObj(AI_CFG_STORE);
+if (!AI.base) AI.base = "https://api.chatanywhere.org";
+if (!AI.model) AI.model = "gpt-4o-mini";
+var USER_FOODS = loadArr(UF_KEY);
+function aiReady() { return !!(AI.key && AI.key.length > 8); }
+function allFoods() { return FOOD_LIBRARY.concat(USER_FOODS); }
+
 /* ── 小工具 ─────────────────────────────────────────────── */
 function pad2(n) { return (n < 10 ? "0" : "") + n; }
 function todayStr() { var d = new Date(); return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
@@ -454,7 +480,11 @@ function nowTs() { var d = new Date(); return todayStr() + "T" + pad2(d.getHours
 function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 function kcalOf(food, grams) { return Math.round(food.per_100g.kcal * grams / 100); }
 function protOf(food, grams) { return Math.round(food.per_100g.protein * grams / 100 * 10) / 10; }
-function foodById(id) { for (var i = 0; i < FOOD_LIBRARY.length; i++) if (FOOD_LIBRARY[i].id === id) return FOOD_LIBRARY[i]; return null; }
+function foodById(id) {
+  var all = allFoods();
+  for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
+  return null;
+}
 function mealOf(ts) {
   var h = parseInt(ts.slice(11, 13), 10);
   if (h < 11) return "早餐";
@@ -696,10 +726,11 @@ function chipCandidates() {
     if (!e.food_id) return;
     score[e.food_id] = (score[e.food_id] || 0) + 1 + (mealOf(e.ts) === slot ? 2 : 0);
   });
-  var lib = FOOD_LIBRARY.slice();
+  var all = allFoods();
+  var lib = all.slice();
   lib.sort(function (a, b) {
     var d = (score[b.id] || 0) - (score[a.id] || 0);
-    return d !== 0 ? d : FOOD_LIBRARY.indexOf(a) - FOOD_LIBRARY.indexOf(b);
+    return d !== 0 ? d : all.indexOf(a) - all.indexOf(b);
   });
   return lib.slice(0, 8);
 }
@@ -785,7 +816,7 @@ function renderQuickBody() {
   var h = "";
   if (searchQuery) {
     var q = searchQuery.toLowerCase();
-    var hits = FOOD_LIBRARY.filter(function (f) { return f.name.toLowerCase().indexOf(q) >= 0 || f.id.indexOf(q) >= 0; });
+    var hits = allFoods().filter(function (f) { return f.name.toLowerCase().indexOf(q) >= 0 || f.id.indexOf(q) >= 0; });
     h += '<div class="results">';
     hits.forEach(function (f) {
       var dp = f.portions.find(function (p) { return p.label === f.default_portion; }) || f.portions[0];
@@ -793,7 +824,13 @@ function renderQuickBody() {
         '<span class="nm"><i class="dot ' + (f.confidence === "high" ? "hi" : "lo") + '"></i><span>' + esc(f.name) + '</span></span>' +
         '<span class="kc">' + esc(dp.label) + ' · ' + kcalOf(f, dp.grams) + '</span></button>';
     });
-    if (!hits.length) h += '<div class="r-none">食物库里没有「' + esc(searchQuery) + '」。拍两张照片（外包装＋营养成分表）传到「待入库」，之后按照片精确回算；现在先估一条不中断记录：</div>';
+    if (!hits.length) h += '<div class="r-none">食物库里没有「' + esc(searchQuery) + '」。</div>';
+    if (aiReady()) {
+      h += '<button class="r-guess" data-act="ai-photo">📷 拍营养成分表，识别后入库</button>';
+      if (!hits.length) h += '<button class="r-guess" data-act="ai-text">✨ 让 AI 估算「' + esc(searchQuery) + '」的热量</button>';
+    } else {
+      h += '<div class="r-none" style="padding-top:4px">在「导出」页设置 API 密钥后，这里可以拍成分表自动入库、或让 AI 估算热量。</div>';
+    }
     h += '<button class="r-guess" data-act="open-guess">＋ 先记一条估计（' + esc(searchQuery) + '）</button></div>';
   } else {
     h += '<div class="chips">' + chipCandidates().map(function (f) {
