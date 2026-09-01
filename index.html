@@ -98,6 +98,10 @@
   .fill-good  { background: var(--good); }
   .fill-over  { background: var(--over); }
 
+  .tchips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tchip { padding: 8px 14px; border-radius: 16px; border: 1px solid var(--hair); background: var(--card);
+           font-size: 13px; font-family: var(--f-label); font-weight: 600; color: var(--text-dim); }
+  .tchip[aria-pressed="true"] { background: var(--good); border-color: var(--good); color: var(--card); }
   .rowline { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; }
   .rowline .k { font-family: var(--f-label); font-weight: 600; color: var(--text-dim); }
   .rowline .v { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
@@ -348,7 +352,7 @@
    取原设计下限 1900。攒满一周完整记录+新导出后，周报用能量平衡
    反推真实消耗并校准这两个数。 */
 var BUILD = {
-  version: "1.3.4",
+  version: "1.4.0",
   built: "2026-09-01",
   kcal_target: 1900,     // 减脂目标：82.5kg → 78kg，每周约 −0.4~0.5kg
   tdee: 2300,            // 校准常数，随周报更新；不是当日实测消耗
@@ -425,7 +429,8 @@ var K = {
   log: "caltrk7f3a.log.v1",
   weight: "caltrk7f3a.weight.v1",
   days: "caltrk7f3a.days.v1",
-  settings: "caltrk7f3a.settings.v1"
+  settings: "caltrk7f3a.settings.v1",
+  training: "caltrk7f3a.training.v1"   /* 2026-09-01 新增键（原有四个键名不动） */
 };
 var storeBroken = false;   // 读损坏或写失败：页面顶部常驻警告，且暂停「切回时重读」
 
@@ -459,11 +464,34 @@ function reloadDB() {
   DB.weight = loadArr(K.weight);
   DB.days = loadArr(K.days);
   DB.settings = loadObj(K.settings);
+  DB.training = loadArr(K.training);
 }
 reloadDB();
 function persist(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); }
   catch (e) { storeBroken = true; alert("本地存储写入失败，这条记录可能没有保存住。请截图并尽快导出。"); }
+}
+
+/* ── 今日训练（2026-09-01 加）──────────────────────────────
+   预设时长/消耗 = 2026-02-24 起 Apple Watch 各类型实测的中位数。
+   估算只作记录参考，不参与摄入额度计算——基准消耗(tdee)按含平时
+   训练的日均消耗校准，再加会重复计。 */
+var TRAINING_PRESETS = [
+  { type: "strength", label: "力量训练", min: 100, kcal: 550 },
+  { type: "incline",  label: "爬坡快走", min: 35,  kcal: 170 },
+  { type: "stairs",   label: "爬楼梯",   min: 50,  kcal: 600 }
+];
+function trainingToday() {
+  var t = todayStr();
+  for (var i = 0; i < DB.training.length; i++) if (DB.training[i].date === t) return DB.training[i];
+  return null;
+}
+function toggleTraining(type) {
+  var rec = trainingToday();
+  if (!rec) { rec = { date: todayStr(), types: [] }; DB.training.push(rec); }
+  var i = rec.types.indexOf(type);
+  if (i >= 0) rec.types.splice(i, 1); else rec.types.push(type);
+  persist(K.training, DB.training);
 }
 
 /* ── AI 识别（可选功能，BYOK：用户在本页设置里粘贴自己的 ChatAnywhere
@@ -782,9 +810,15 @@ function renderBanner() {
 function renderTodayTop() {
   var el = document.getElementById("today-top");
   var entries = entriesToday();
-  var intake = 0, prot = 0;
-  entries.forEach(function (e) { intake += e.kcal || 0; prot += e.protein || 0; });
+  var intake = 0, prot = 0, fat = 0, carb = 0, hasGuess = false;
+  entries.forEach(function (e) {
+    intake += e.kcal || 0; prot += e.protein || 0;
+    fat += e.fat || 0; carb += e.carb || 0;
+    if (e.pending || e.confidence === "guess") hasGuess = true;
+  });
   prot = Math.round(prot * 10) / 10;
+  fat = Math.round(fat * 10) / 10;
+  carb = Math.round(carb * 10) / 10;
   var flash = flashId ? " flash" : "";
 
   var h = "";
@@ -811,9 +845,31 @@ function renderTodayTop() {
       '</div></div>';
   }
   var ppct = Math.min(100, Math.round(prot / BUILD.protein_target * 100));
-  h += '<div class="mod"><div class="mod-title">蛋白质</div>' +
-    '<div class="rowline"><span class="k">已摄入</span><span class="v">' + prot + ' / ' + BUILD.protein_target + ' g</span></div>' +
-    '<div class="bar"><i class="fill-good" style="width:' + ppct + '%"></i></div></div>';
+  h += '<div class="mod"><div class="mod-title">营养素</div>' +
+    '<div class="rowline"><span class="k">蛋白质</span><span class="v">' + prot + ' / ' + BUILD.protein_target + ' g</span></div>' +
+    '<div class="bar"><i class="fill-good" style="width:' + ppct + '%"></i></div>' +
+    '<div class="split3" style="margin-top:9px">' +
+      '<div><span class="k">碳水</span><span class="v">' + carb + ' g</span></div>' +
+      '<div><span class="k">脂肪</span><span class="v">' + fat + ' g</span></div>' +
+      '<div><span class="k">蛋白</span><span class="v">' + prot + ' g</span></div>' +
+    '</div>' +
+    (hasGuess ? '<div class="hint" style="margin-top:6px">「估」的条目只计热量，碳蛋脂未计入。</div>' : '') +
+    '</div>';
+
+  var tr = trainingToday();
+  var sel = tr ? tr.types : [];
+  var estK = 0, estM = 0;
+  h += '<div class="mod"><div class="mod-title">今日训练</div><div class="tchips">';
+  TRAINING_PRESETS.forEach(function (p) {
+    var on = sel.indexOf(p.type) >= 0;
+    if (on) { estK += p.kcal; estM += p.min; }
+    h += '<button class="tchip" data-act="toggle-training" data-type="' + p.type + '" aria-pressed="' + on + '">' + p.label + '</button>';
+  });
+  h += '</div>';
+  if (estM > 0) {
+    h += '<div class="rowline" style="margin-top:9px"><span class="k">估算消耗</span><span class="v">约 ' + estK + ' kcal · ' + estM + ' 分钟</span></div>';
+  }
+  h += '<div class="hint" style="margin-top:6px">预设为过去半年手表实测中位值，只作记录，不加进每日额度（基准消耗已含平时训练）。</div></div>';
   el.innerHTML = h;
 }
 function renderQuickBody() {
@@ -1064,11 +1120,11 @@ function doExport() {
     schema: "caltrk-export.v1",
     exported_at: nowTs(),
     app_version: BUILD.version,
-    log: DB.log, weight: DB.weight, days: DB.days
+    log: DB.log, weight: DB.weight, days: DB.days, training: DB.training
   };
   /* 附带解析失败时抢救下来的原始串，供电脑侧恢复 */
   var baks = {};
-  [K.log, K.weight, K.days, K.settings].forEach(function (k) {
+  [K.log, K.weight, K.days, K.settings, K.training].forEach(function (k) {
     try {
       var b = localStorage.getItem(k + ".bak");
       if (b != null) baks[k] = b;
@@ -1175,6 +1231,10 @@ document.addEventListener("click", function (ev) {
     setDayComplete(t, !dayComplete(t));
     renderBanner();
     renderTodayBottom();
+  }
+  else if (act === "toggle-training") {
+    toggleTraining(b.getAttribute("data-type"));
+    renderTodayTop();
   }
   else if (act === "dismiss-banner") {
     ev.stopPropagation();
