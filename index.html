@@ -102,6 +102,17 @@
   .tchip { padding: 8px 14px; border-radius: 16px; border: 1px solid var(--hair); background: var(--card);
            font-size: 13px; font-family: var(--f-label); font-weight: 600; color: var(--text-dim); }
   .tchip[aria-pressed="true"] { background: var(--good); border-color: var(--good); color: var(--card); }
+  .trow { display: flex; align-items: center; gap: 10px; margin-top: 9px; }
+  .trow .tl { font-family: var(--f-label); font-size: 12px; font-weight: 600; color: var(--text-dim); flex: none; width: 58px; }
+  .trow input[type="range"] { flex: 1; min-width: 0; accent-color: var(--good); }
+  .trow .tv { font-family: var(--f-num); font-variant-numeric: tabular-nums; font-size: 12px; flex: none; min-width: 74px; text-align: right; }
+  .hrow { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--hair); font-size: 12.5px; }
+  .hrow:last-child { border-bottom: none; }
+  .hrow .hd { font-family: var(--f-num); color: var(--text-dim); flex: none; }
+  .hrow .hk { font-family: var(--f-num); font-variant-numeric: tabular-nums; font-weight: 700; flex: none; min-width: 46px; text-align: right; }
+  .hrow .hk.over { color: var(--over); }
+  .hrow .hm { color: var(--text-faint); flex: 1; font-size: 11px; }
+  .hrow .hi { flex: none; font-size: 11px; color: var(--text-dim); }
   .rowline { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; }
   .rowline .k { font-family: var(--f-label); font-weight: 600; color: var(--text-dim); }
   .rowline .v { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
@@ -352,11 +363,15 @@
    取原设计下限 1900。攒满一周完整记录+新导出后，周报用能量平衡
    反推真实消耗并校准这两个数。 */
 var BUILD = {
-  version: "1.4.0",
+  version: "1.5.0",
   built: "2026-09-01",
   kcal_target: 1900,     // 减脂目标：82.5kg → 78kg，每周约 −0.4~0.5kg
   tdee: 2300,            // 校准常数，随周报更新；不是当日实测消耗
-  protein_target: 150
+  protein_target: 150,
+  /* 碳/脂上限由 1900 分解而来：蛋白150g=600kcal + 脂肪60g=540kcal
+     + 碳水190g=760kcal。周报改 kcal_target 时要同步重算这两个数。 */
+  carb_target: 190,
+  fat_target: 60
 };
 
 /* ── 食物库（权威副本在 OneDrive calorie-tracker/food_library.json，
@@ -477,20 +492,42 @@ function persist(key, val) {
    估算只作记录参考，不参与摄入额度计算——基准消耗(tdee)按含平时
    训练的日均消耗校准，再加会重复计。 */
 var TRAINING_PRESETS = [
-  { type: "strength", label: "力量训练", min: 100, kcal: 550 },
-  { type: "incline",  label: "爬坡快走", min: 35,  kcal: 170 },
-  { type: "stairs",   label: "爬楼梯",   min: 50,  kcal: 600 }
+  { type: "strength", label: "力量训练", min: 100, rate: 5.5 },
+  { type: "incline",  label: "爬坡快走", min: 35,  rate: 4.9 },
+  { type: "stairs",   label: "爬楼梯",   min: 50,  rate: 12.1 }
 ];
-function trainingToday() {
-  var t = todayStr();
-  for (var i = 0; i < DB.training.length; i++) if (DB.training[i].date === t) return DB.training[i];
+function presetOf(type) {
+  for (var i = 0; i < TRAINING_PRESETS.length; i++) if (TRAINING_PRESETS[i].type === type) return TRAINING_PRESETS[i];
   return null;
+}
+function trainingOn(date) {
+  for (var i = 0; i < DB.training.length; i++) if (DB.training[i].date === date) return DB.training[i];
+  return null;
+}
+function trainingToday() { return trainingOn(todayStr()); }
+function trainingMin(rec, type) {
+  if (rec && rec.mins && rec.mins[type] > 0) return rec.mins[type];
+  var p = presetOf(type);
+  return p ? p.min : 30;
+}
+function trainingKcal(rec, type) {
+  var p = presetOf(type);
+  return p ? Math.round(trainingMin(rec, type) * p.rate) : 0;
 }
 function toggleTraining(type) {
   var rec = trainingToday();
-  if (!rec) { rec = { date: todayStr(), types: [] }; DB.training.push(rec); }
+  if (!rec) { rec = { date: todayStr(), types: [], mins: {} }; DB.training.push(rec); }
+  if (!rec.mins) rec.mins = {};
   var i = rec.types.indexOf(type);
-  if (i >= 0) rec.types.splice(i, 1); else rec.types.push(type);
+  if (i >= 0) { rec.types.splice(i, 1); }
+  else { rec.types.push(type); if (!(rec.mins[type] > 0)) rec.mins[type] = presetOf(type).min; }
+  persist(K.training, DB.training);
+}
+function setTrainingMin(type, m) {
+  var rec = trainingToday();
+  if (!rec) return;
+  if (!rec.mins) rec.mins = {};
+  rec.mins[type] = m;
   persist(K.training, DB.training);
 }
 
@@ -505,6 +542,115 @@ if (!AI.model) AI.model = "gpt-4o-mini";
 var USER_FOODS = loadArr(UF_KEY);
 function aiReady() { return !!(AI.key && AI.key.length > 8); }
 function allFoods() { return FOOD_LIBRARY.concat(USER_FOODS); }
+
+function saveAiKey() {
+  var inp = document.getElementById("ai-key-in");
+  if (!inp) return;
+  var v = inp.value.trim();
+  if (v) AI.key = v; else delete AI.key;
+  persist(AI_CFG_STORE, AI);
+  renderExport();
+}
+var AI_SYS = "你是营养标签识别器。只输出一个 JSON 对象，不要任何其他文字、不要代码块标记。格式：" +
+  '{"name":"品牌+食物名(中文)","per_100g":{"kcal":0,"protein":0,"fat":0,"carb":0},' +
+  '"portions":[{"label":"整包","grams":0}],"default_portion":"整包","note":"哪些数字是标签实读、哪些是估算"}。' +
+  "规则：per_100g 全部用每100克数值；标签只给千焦(kJ)时除以4.184换成kcal；整包热量要和每100g×重量交叉验证；" +
+  "看不清或没有的字段按同类食物估算并在 note 里说明；portions 给1-3个常用份量（整包/一份/半盒等，含克数）。";
+var aiBusy = false;
+function aiChat(userContent, onOk) {
+  if (aiBusy) return;
+  aiBusy = true;
+  var ctrl = ("AbortController" in window) ? new AbortController() : null;
+  var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 60000) : null;
+  fetch(AI.base + "/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + AI.key },
+    signal: ctrl ? ctrl.signal : undefined,
+    body: JSON.stringify({
+      model: AI.model, temperature: 0,
+      messages: [{ role: "system", content: AI_SYS }, { role: "user", content: userContent }]
+    })
+  }).then(function (r) {
+    if (!r.ok) throw new Error("HTTP " + r.status + (r.status === 401 ? "（密钥无效？）" : ""));
+    return r.json();
+  }).then(function (j) {
+    var txt = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    if (!txt) throw new Error("空回复");
+    onOk(txt);
+  }).catch(function (e) {
+    alert("AI 识别失败：" + (e && e.message ? e.message : e) + "\n可以先用「记一条估计」，回头再入库。");
+  }).finally(function () {
+    aiBusy = false;
+    if (timer) clearTimeout(timer);
+    renderQuickBody();
+  });
+}
+function aiParseFood(txt) {
+  var s = String(txt).replace(/```json|```/g, "").trim();
+  var a = s.indexOf("{"), b = s.lastIndexOf("}");
+  if (a < 0 || b <= a) return null;
+  var o;
+  try { o = JSON.parse(s.slice(a, b + 1)); } catch (e) { return null; }
+  if (!o || typeof o.name !== "string" || !o.per_100g) return null;
+  function num(x, lo, hi) { x = Number(x); return (isFinite(x) && x >= lo && x <= hi) ? Math.round(x * 10) / 10 : null; }
+  var kcal = num(o.per_100g.kcal, 0, 900), pr = num(o.per_100g.protein, 0, 100),
+      ft = num(o.per_100g.fat, 0, 100), cb = num(o.per_100g.carb, 0, 100);
+  if (kcal == null || pr == null || ft == null || cb == null) return null;
+  var ports = Array.isArray(o.portions) ? o.portions.filter(function (x) {
+    return x && typeof x.label === "string" && Number(x.grams) > 0 && Number(x.grams) <= 2000;
+  }).slice(0, 3).map(function (x) { return { label: String(x.label).slice(0, 12), grams: Math.round(Number(x.grams)) }; }) : [];
+  if (!ports.length) ports = [{ label: "100 g", grams: 100 }];
+  var dp = ports.some(function (x) { return x.label === o.default_portion; }) ? o.default_portion : ports[0].label;
+  return { name: o.name.slice(0, 30), per_100g: { kcal: Math.round(kcal), protein: pr, fat: ft, carb: cb },
+           portions: ports, default_portion: dp, note: String(o.note || "").slice(0, 120) };
+}
+function aiAddFood(spec) {
+  var f = { id: "uf-" + Date.now().toString(36), name: spec.name, per_100g: spec.per_100g,
+            portions: spec.portions, default_portion: spec.default_portion,
+            confidence: "low", note: "AI 识别：" + spec.note, added: todayStr() };
+  USER_FOODS.push(f);
+  persist(UF_KEY, USER_FOODS);
+  openPortionSheet(f.id, null);
+}
+function aiEstimateText(q) {
+  if (!q) return;
+  aiChat([{ type: "text", text: "估算「" + q + "」的每100克营养和常见份量，按系统要求输出 JSON。note 里注明是无标签估算。" }],
+    function (txt) {
+      var spec = aiParseFood(txt);
+      if (!spec) { alert("AI 回复解析失败，换个更具体的名字试试。"); return; }
+      aiAddFood(spec);
+    });
+}
+var aiInput = document.createElement("input");
+aiInput.type = "file"; aiInput.accept = "image/*"; aiInput.style.display = "none";
+document.body.appendChild(aiInput);
+function aiPhotoStart() {
+  aiInput.value = "";
+  aiInput.click();
+}
+aiInput.addEventListener("change", function () {
+  var file = aiInput.files && aiInput.files[0];
+  if (!file) return;
+  var url = URL.createObjectURL(file);
+  var img = new Image();
+  img.onload = function () {
+    var mx = 1280, sc = Math.min(1, mx / Math.max(img.width, img.height));
+    var cv = document.createElement("canvas");
+    cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+    cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+    URL.revokeObjectURL(url);
+    aiChat([
+      { type: "image_url", image_url: { url: cv.toDataURL("image/jpeg", 0.85) } },
+      { type: "text", text: "识别这张食物/营养成分表照片，按系统要求输出 JSON。" }
+    ], function (txt) {
+      var spec = aiParseFood(txt);
+      if (!spec) { alert("AI 回复解析失败，换张更清楚的照片试试。"); return; }
+      aiAddFood(spec);
+    });
+  };
+  img.onerror = function () { URL.revokeObjectURL(url); alert("图片读取失败。"); };
+  img.src = url;
+});
 
 /* ── 小工具 ─────────────────────────────────────────────── */
 function pad2(n) { return (n < 10 ? "0" : "") + n; }
@@ -844,16 +990,21 @@ function renderTodayTop() {
         (Math.round(Math.abs(BUILD.tdee - intake) * 7 / 7700 * 100) / 100) + " kg/周</b>。*基准消耗是校准出的常数，不是当日实测。") +
       '</div></div>';
   }
-  var ppct = Math.min(100, Math.round(prot / BUILD.protein_target * 100));
+  function macroRow(label, val, target, goodFill) {
+    var over = val > target;
+    var pct = Math.min(100, Math.round(val / target * 100));
+    var left = Math.round((target - val) * 10) / 10;
+    return '<div class="rowline" style="margin-top:7px"><span class="k">' + label + '</span>' +
+      '<span class="v' + (over ? ' warn' : '') + '">' + val + ' / ' + target + ' g' +
+      (over ? '（超 ' + Math.abs(left) + '）' : '（还可 ' + left + '）') + '</span></div>' +
+      '<div class="bar"><i class="' + (over ? 'fill-over' : goodFill) + '" style="width:' + pct + '%"></i></div>';
+  }
   h += '<div class="mod"><div class="mod-title">营养素</div>' +
-    '<div class="rowline"><span class="k">蛋白质</span><span class="v">' + prot + ' / ' + BUILD.protein_target + ' g</span></div>' +
-    '<div class="bar"><i class="fill-good" style="width:' + ppct + '%"></i></div>' +
-    '<div class="split3" style="margin-top:9px">' +
-      '<div><span class="k">碳水</span><span class="v">' + carb + ' g</span></div>' +
-      '<div><span class="k">脂肪</span><span class="v">' + fat + ' g</span></div>' +
-      '<div><span class="k">蛋白</span><span class="v">' + prot + ' g</span></div>' +
-    '</div>' +
-    (hasGuess ? '<div class="hint" style="margin-top:6px">「估」的条目只计热量，碳蛋脂未计入。</div>' : '') +
+    macroRow('蛋白质', prot, BUILD.protein_target, 'fill-good') +
+    macroRow('碳水', carb, BUILD.carb_target, 'fill-brass') +
+    macroRow('脂肪', fat, BUILD.fat_target, 'fill-brass') +
+    '<div class="hint" style="margin-top:7px">上限按每日 ' + BUILD.kcal_target + ' kcal 拆分：蛋白优先，脂肪约三成，其余归碳水。' +
+    (hasGuess ? '「估」的条目只计热量，碳蛋脂未计入。' : '') + '</div>' +
     '</div>';
 
   var tr = trainingToday();
@@ -862,14 +1013,21 @@ function renderTodayTop() {
   h += '<div class="mod"><div class="mod-title">今日训练</div><div class="tchips">';
   TRAINING_PRESETS.forEach(function (p) {
     var on = sel.indexOf(p.type) >= 0;
-    if (on) { estK += p.kcal; estM += p.min; }
+    if (on) { estK += trainingKcal(tr, p.type); estM += trainingMin(tr, p.type); }
     h += '<button class="tchip" data-act="toggle-training" data-type="' + p.type + '" aria-pressed="' + on + '">' + p.label + '</button>';
   });
   h += '</div>';
+  TRAINING_PRESETS.forEach(function (p) {
+    if (sel.indexOf(p.type) < 0) return;
+    var m = trainingMin(tr, p.type);
+    h += '<div class="trow"><span class="tl">' + p.label + '</span>' +
+      '<input type="range" min="10" max="180" step="5" value="' + m + '" data-tmin="' + p.type + '" aria-label="' + p.label + '时长">' +
+      '<span class="tv" id="tv-' + p.type + '">' + m + '分·' + trainingKcal(tr, p.type) + '</span></div>';
+  });
   if (estM > 0) {
-    h += '<div class="rowline" style="margin-top:9px"><span class="k">估算消耗</span><span class="v">约 ' + estK + ' kcal · ' + estM + ' 分钟</span></div>';
+    h += '<div class="rowline" style="margin-top:9px"><span class="k">估算消耗</span><span class="v" id="t-est">约 ' + estK + ' kcal · ' + estM + ' 分钟</span></div>';
   }
-  h += '<div class="hint" style="margin-top:6px">预设为过去半年手表实测中位值，只作记录，不加进每日额度（基准消耗已含平时训练）。</div></div>';
+  h += '<div class="hint" style="margin-top:6px">时长可拖动调整；消耗按你过去半年手表实测的每分钟均值折算，只作记录，不加进每日额度（基准消耗已含平时训练）。</div></div>';
   el.innerHTML = h;
 }
 function renderQuickBody() {
@@ -936,7 +1094,42 @@ function renderTodayBottom() {
     '<div class="hint">只有打开此开关的天才进入消耗量的计算</div></div>' +
     '<button class="sw" role="switch" aria-checked="' + comp + '" data-act="toggle-complete" aria-label="今天记全了"></button>' +
     '</div></div>';
+  h += renderHistoryMod(t);
   el.innerHTML = h;
+}
+/* 过去 14 天概览：摄入 vs 目标、碳蛋脂、训练、是否记全 */
+function renderHistoryMod(today) {
+  var byDay = {};
+  DB.log.forEach(function (e) {
+    var d = (e.ts || "").slice(0, 10);
+    if (!d || d === today) return;
+    var r = byDay[d] || (byDay[d] = { kcal: 0, prot: 0, carb: 0, fat: 0 });
+    r.kcal += e.kcal || 0; r.prot += e.protein || 0;
+    r.carb += e.carb || 0; r.fat += e.fat || 0;
+  });
+  DB.training.forEach(function (r) {
+    if (r.date !== today && r.types && r.types.length && !byDay[r.date]) byDay[r.date] = { kcal: 0, prot: 0, carb: 0, fat: 0 };
+  });
+  var dates = Object.keys(byDay).sort().reverse().slice(0, 14);
+  var h = '<div class="mod"><div class="mod-title">过去 14 天</div>';
+  if (!dates.length) {
+    return h + '<div class="hint">记录攒起来后，这里会按天显示摄入、营养素和训练。</div></div>';
+  }
+  var WD = ["日", "一", "二", "三", "四", "五", "六"];
+  var TN = { strength: "力", incline: "坡", stairs: "梯" };
+  dates.forEach(function (d) {
+    var r = byDay[d];
+    var wd = WD[new Date(d + "T12:00").getDay()];
+    var tr = trainingOn(d);
+    var icons = (tr && tr.types ? tr.types.map(function (x) { return TN[x] || ""; }).join("") : "");
+    var overCls = (BUILD.kcal_target != null && r.kcal > BUILD.kcal_target) ? " over" : "";
+    h += '<div class="hrow"><span class="hd">' + d.slice(5) + ' ' + wd + '</span>' +
+      '<span class="hk' + overCls + '">' + Math.round(r.kcal) + '</span>' +
+      '<span class="hm">蛋' + Math.round(r.prot) + ' 碳' + Math.round(r.carb) + ' 脂' + Math.round(r.fat) + '</span>' +
+      '<span class="hi">' + (icons ? "练:" + icons : "") + (dayComplete(d) ? " ✓" : "") + '</span></div>';
+  });
+  h += '<div class="hint" style="margin-top:6px">数字是当天摄入 kcal，红色 = 超过目标；✓ = 当天标记过「记全了」。</div></div>';
+  return h;
 }
 function renderToday() {
   renderBanner();
@@ -1109,6 +1302,15 @@ function renderExport() {
       (lastConfirm ? lastConfirm + (ds > 0 ? "（" + ds + " 天前）" : "") : "从未") + '</span></div>' +
     (storeBroken ? '<div class="note" style="color:var(--over)">⚠️ 检测到存储异常。导出文件里已附带抢救出的原始数据，请尽快导出并联系分析端。</div>' : '') +
     '</div>' +
+    '<div class="mod"><div class="mod-title">AI 识别（自带密钥）</div>' +
+    '<div class="rowline"><span class="k">状态</span><span class="v">' +
+      (aiReady() ? "已启用 · " + AI.model : "未设置") + '</span></div>' +
+    '<input id="ai-key-in" type="password" autocomplete="off" placeholder="粘贴 ChatAnywhere 密钥（sk- 开头）" ' +
+      'style="width:100%;margin:8px 0;padding:10px;border:1px solid var(--hair);border-radius:8px;background:var(--card);color:inherit;font-size:14px">' +
+    '<button class="btn solid" data-act="save-ai-key">保存密钥</button>' +
+    '<div class="note">密钥只存在这台手机的浏览器里：不进导出文件、不进代码仓库，页面从手机直连 ChatAnywhere。' +
+    '保存后回「今日」页，搜索任何食物，结果下方会出现「📷 拍营养成分表」和「✨ AI 估算」。识别出的食物存入你的个人库' +
+    '（搜索可见、标为估算、随导出带出，电脑端周报会核对）。填空保存 = 清除密钥。</div></div>' +
     '<div class="mod"><button class="btn solid" data-act="do-export">导出全部数据</button>' +
     '<div class="note">每周一次。文件会出现在「文件」App 的下载项里，' +
     '打开 OneDrive 把它移到 <b style="font-family:var(--f-num)">健康数据/calorie-tracker/exports/</b>。' +
@@ -1120,11 +1322,12 @@ function doExport() {
     schema: "caltrk-export.v1",
     exported_at: nowTs(),
     app_version: BUILD.version,
-    log: DB.log, weight: DB.weight, days: DB.days, training: DB.training
+    log: DB.log, weight: DB.weight, days: DB.days, training: DB.training,
+    user_foods: USER_FOODS
   };
   /* 附带解析失败时抢救下来的原始串，供电脑侧恢复 */
   var baks = {};
-  [K.log, K.weight, K.days, K.settings, K.training].forEach(function (k) {
+  [K.log, K.weight, K.days, K.settings, K.training, UF_KEY].forEach(function (k) {
     try {
       var b = localStorage.getItem(k + ".bak");
       if (b != null) baks[k] = b;
@@ -1236,6 +1439,9 @@ document.addEventListener("click", function (ev) {
     toggleTraining(b.getAttribute("data-type"));
     renderTodayTop();
   }
+  else if (act === "save-ai-key") saveAiKey();
+  else if (act === "ai-photo") { b.textContent = "📷 识别中…"; aiPhotoStart(); }
+  else if (act === "ai-text") { b.textContent = "✨ 识别中…"; aiEstimateText(searchQuery); }
   else if (act === "dismiss-banner") {
     ev.stopPropagation();
     dismissBanner(b.getAttribute("data-kind"));
@@ -1253,6 +1459,26 @@ document.addEventListener("click", function (ev) {
   else if (act === "kg-plus") stepKg(0.1);
   else if (act === "save-weight") saveWeight();
   else if (act === "do-export") doExport();
+}, true);
+
+/* 训练时长滑杆：拖动中只更新文字（避免重建打断手势），松手才落盘重绘 */
+document.addEventListener("input", function (ev) {
+  var s = ev.target;
+  if (!s.hasAttribute || !s.hasAttribute("data-tmin")) return;
+  var type = s.getAttribute("data-tmin");
+  var m = parseInt(s.value, 10);
+  setTrainingMin(type, m);
+  var p = presetOf(type);
+  var tv = document.getElementById("tv-" + type);
+  if (tv && p) tv.textContent = m + "分·" + Math.round(m * p.rate);
+  var rec = trainingToday();
+  var estK = 0, estM = 0;
+  if (rec) rec.types.forEach(function (t) { estK += trainingKcal(rec, t); estM += trainingMin(rec, t); });
+  var te = document.getElementById("t-est");
+  if (te) te.textContent = "约 " + estK + " kcal · " + estM + " 分钟";
+}, true);
+document.addEventListener("change", function (ev) {
+  if (ev.target.hasAttribute && ev.target.hasAttribute("data-tmin")) renderTodayTop();
 }, true);
 
 /* ── 启动与刷新 ─────────────────────────────────────────── */
