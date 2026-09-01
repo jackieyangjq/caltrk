@@ -377,7 +377,7 @@
    取原设计下限 1900。攒满一周完整记录+新导出后，周报用能量平衡
    反推真实消耗并校准这两个数。 */
 var BUILD = {
-  version: "1.7.0",
+  version: "1.7.1",
   built: "2026-09-01",
   kcal_target: 1900,     // 减脂目标：82.5kg → 78kg，每周约 −0.4~0.5kg
   tdee: 2300,            // 校准常数，随周报更新；不是当日实测消耗
@@ -552,7 +552,37 @@ var AI_CFG_STORE = "caltrk7f3a.ai.v1";
 var UF_KEY = "caltrk7f3a.userfoods.v1";   // 手机上拍照入库的个人食物，随导出带出
 var AI = loadObj(AI_CFG_STORE);
 if (!AI.base) AI.base = "https://api.chatanywhere.org";
-if (!AI.model) AI.model = "gpt-4o-mini";
+if (!AI.model) AI.model = "gpt-4.1-mini";
+/* 2026-09-01 一次性迁移：旧默认 gpt-4o-mini 是页面自动填的（用户没主动选过），升到 4.1-mini */
+if (AI.key && AI.model === "gpt-4o-mini" && !AI.m41) { AI.model = "gpt-4.1-mini"; AI.m41 = 1; persist(AI_CFG_STORE, AI); }
+/* 下拉候选：全部为 ChatAnywhere 在售、支持图片输入的模型（2026-09 查证）。价格注释见「导出」页说明 */
+var MODEL_OPTS = [
+  ["gpt-4.1-mini", "gpt-4.1-mini（推荐：准与省的平衡）"],
+  ["gemini-2.5-flash", "gemini-2.5-flash（更便宜，看图也强）"],
+  ["gpt-4o-mini", "gpt-4o-mini（最省，读小字稍弱）"],
+  ["gpt-5-mini", "gpt-5-mini（更新一代，稍贵）"],
+  ["gpt-4.1", "gpt-4.1（高准确，约 5 倍价）"],
+  ["claude-sonnet-5", "claude-sonnet-5（最准也最贵）"]
+];
+var MODEL2_OPTS = [
+  ["", "不启用（默认）"],
+  ["gemini-2.5-flash", "gemini-2.5-flash（推荐：跨厂商互查）"],
+  ["gpt-4.1-mini", "gpt-4.1-mini"],
+  ["claude-haiku-4-5-20251001", "claude-haiku-4.5"]
+];
+function modelSelHtml(id, inId, opts, current) {
+  var inList = opts.some(function (o) { return o[0] === current; });
+  var st = 'style="width:100%;margin:6px 0 0;padding:10px;border:1px solid var(--hair);border-radius:8px;background:var(--card);color:inherit;font-size:14px"';
+  var h = '<select id="' + id + '" data-modelsel="' + inId + '" ' + st + '>';
+  opts.forEach(function (o) {
+    h += '<option value="' + o[0] + '"' + (current === o[0] ? " selected" : "") + '>' + o[1] + '</option>';
+  });
+  var custom = !inList && current;
+  h += '<option value="__custom"' + (custom ? " selected" : "") + '>自定义…</option></select>';
+  h += '<input id="' + inId + '" type="text" autocomplete="off" placeholder="自定义模型名（以 ChatAnywhere 支持为准）" ' +
+    'value="' + (custom ? esc(current) : "") + '" ' + st.slice(0, -1) + (custom ? '"' : ';display:none"') + '>';
+  return h;
+}
 var USER_FOODS = loadArr(UF_KEY);
 function aiReady() { return !!(AI.key && AI.key.length > 8); }
 function allFoods() { return FOOD_LIBRARY.concat(USER_FOODS); }
@@ -564,11 +594,17 @@ function saveAiKey() {
   if (v === "清除" || v.toLowerCase() === "clear") delete AI.key;
   else if (v) AI.key = v;
   /* 密钥框留空 = 不改密钥，这样单独换模型不用重贴密钥 */
-  var mEl = document.getElementById("ai-model-in");
-  var m = mEl ? mEl.value.trim() : "";
-  AI.model = m || "gpt-4o-mini";
-  var m2El = document.getElementById("ai-model2-in");
-  var m2 = m2El ? m2El.value.trim() : "";
+  function pickModel(selId, inId) {
+    var sel = document.getElementById(selId);
+    if (!sel) return "";
+    if (sel.value === "__custom") {
+      var t = document.getElementById(inId);
+      return t ? t.value.trim() : "";
+    }
+    return sel.value;
+  }
+  AI.model = pickModel("ai-model-sel", "ai-model-in") || "gpt-4.1-mini";
+  var m2 = pickModel("ai-model2-sel", "ai-model2-in");
   if (m2) AI.model2 = m2; else delete AI.model2;
   persist(AI_CFG_STORE, AI);
   renderExport();
@@ -593,10 +629,10 @@ function aiRequest(model, sys, userContent) {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": "Bearer " + AI.key },
     signal: ctrl ? ctrl.signal : undefined,
-    body: JSON.stringify({
-      model: model, temperature: 0,
-      messages: [{ role: "system", content: sys }, { role: "user", content: userContent }]
-    })
+    /* gpt-5 系列只接受默认 temperature，传 0 会报错 */
+    body: JSON.stringify(/^(gpt-5|o\d)/.test(model)
+      ? { model: model, messages: [{ role: "system", content: sys }, { role: "user", content: userContent }] }
+      : { model: model, temperature: 0, messages: [{ role: "system", content: sys }, { role: "user", content: userContent }] })
   }).then(function (r) {
     if (!r.ok) throw new Error("HTTP " + r.status + (r.status === 401 ? "（密钥无效？）" : ""));
     return r.json();
@@ -1495,19 +1531,16 @@ function renderExport() {
     '<div class="rowline"><span class="k">状态</span><span class="v">' +
       (aiReady() ? "已启用 · " + AI.model : "未设置") + '</span></div>' +
     '<input id="ai-key-in" type="password" autocomplete="off" placeholder="粘贴密钥（留空=不改；输「清除」=删掉）" ' +
-      'style="width:100%;margin:8px 0 6px;padding:10px;border:1px solid var(--hair);border-radius:8px;background:var(--card);color:inherit;font-size:14px">' +
-    '<input id="ai-model-in" type="text" autocomplete="off" value="' + esc(AI.model || "gpt-4o-mini") + '" ' +
-      'style="width:100%;margin:0 0 6px;padding:10px;border:1px solid var(--hair);border-radius:8px;background:var(--card);color:inherit;font-size:14px" ' +
-      'placeholder="识别模型，默认 gpt-4o-mini">' +
-    '<input id="ai-model2-in" type="text" autocomplete="off" value="' + esc(AI.model2 || "") + '" ' +
-      'style="width:100%;margin:0 0 8px;padding:10px;border:1px solid var(--hair);border-radius:8px;background:var(--card);color:inherit;font-size:14px" ' +
-      'placeholder="复核模型（可选，留空=不复核）">' +
-    '<button class="btn solid" data-act="save-ai-key">保存设置</button>' +
+      'style="width:100%;margin:8px 0 0;padding:10px;border:1px solid var(--hair);border-radius:8px;background:var(--card);color:inherit;font-size:14px">' +
+    '<div class="rowline" style="margin-top:10px"><span class="k">识别模型</span></div>' +
+    modelSelHtml("ai-model-sel", "ai-model-in", MODEL_OPTS, AI.model || "gpt-4.1-mini") +
+    '<div class="rowline" style="margin-top:10px"><span class="k">复核模型（可选）</span></div>' +
+    modelSelHtml("ai-model2-sel", "ai-model2-in", MODEL2_OPTS, AI.model2 || "") +
+    '<button class="btn solid" data-act="save-ai-key" style="margin-top:10px">保存设置</button>' +
     '<div class="note">密钥只存在这台手机的浏览器里：不进导出文件、不进代码仓库，页面从手机直连 ChatAnywhere。' +
-    '「今日」页的「AI 记录」栏：拍这一餐（先确认再记录）、拍成分表入库、文字估算。' +
-    '每次成分表入库都会自动做算术交叉验证（整包热量 vs 每100g×重量、热量 vs 碳蛋脂），对不上会当场弹提醒。' +
-    '想再稳一点：识别模型换 gpt-4.1-mini 或 gpt-4o（名称以 ChatAnywhere 支持为准），或在复核模型里填第二个模型，' +
-    '同一批照片会读两遍、读数不一致会提醒（费用×2，一次也就几分钱）。</div></div>' +
+    '列表里都是支持看图的模型，按性价比排序；日常用默认的 gpt-4.1-mini 就好（一次识别约 1-3 分钱），' +
+    '标签特别小或印刷差再换更强的。复核模型选一个后，成分表入库会用两个模型各读一遍、不一致时提醒' +
+    '（费用×2，仍是几分钱级）。另外每次入库都自动做免费的算术交叉验证（整包热量 vs 每100g×重量、热量 vs 碳蛋脂）。</div></div>' +
     '<div class="mod"><button class="btn solid" data-act="do-export">导出全部数据</button>' +
     '<div class="note">每周一次。文件会出现在「文件」App 的下载项里，' +
     '打开 OneDrive 把它移到 <b style="font-family:var(--f-num)">健康数据/calorie-tracker/exports/</b>。' +
@@ -1727,6 +1760,11 @@ document.addEventListener("input", function (ev) {
 }, true);
 document.addEventListener("change", function (ev) {
   if (ev.target.hasAttribute && ev.target.hasAttribute("data-tmin")) renderTodayTop();
+  /* 模型下拉选「自定义…」时显示手输框 */
+  if (ev.target.hasAttribute && ev.target.hasAttribute("data-modelsel")) {
+    var ci = document.getElementById(ev.target.getAttribute("data-modelsel"));
+    if (ci) ci.style.display = ev.target.value === "__custom" ? "" : "none";
+  }
 }, true);
 
 /* ── 启动与刷新 ─────────────────────────────────────────── */
