@@ -377,7 +377,7 @@
    取原设计下限 1900。攒满一周完整记录+新导出后，周报用能量平衡
    反推真实消耗并校准这两个数。 */
 var BUILD = {
-  version: "1.6.0",
+  version: "1.6.1",
   built: "2026-09-01",
   kcal_target: 1900,     // 减脂目标：82.5kg → 78kg，每周约 −0.4~0.5kg
   tdee: 2300,            // 校准常数，随周报更新；不是当日实测消耗
@@ -579,6 +579,7 @@ var aiBusy = false;
 function aiChat(sys, userContent, onOk) {
   if (aiBusy) return;
   aiBusy = true;
+  renderTodayTop();   /* 真正发请求了才显示「识别中」 */
   var ctrl = ("AbortController" in window) ? new AbortController() : null;
   var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 60000) : null;
   fetch(AI.base + "/v1/chat/completions", {
@@ -1124,14 +1125,17 @@ function renderTodayTop() {
   h += '<div class="hint" style="margin-top:6px">时长可拖动调整；消耗按你过去半年手表实测的每分钟均值折算，只作记录，不加进每日额度（基准消耗已含平时训练）。</div></div>';
 
   h += '<div class="mod"><div class="mod-title">AI 记录</div>';
-  if (aiReady()) {
+  if (aiReady() && aiBusy) {
+    h += '<div class="ai-btns"><button class="btn" disabled>识别中…</button></div>' +
+      '<div class="hint" style="margin-top:6px">AI 正在分析，最多约一分钟。</div>';
+  } else if (aiReady()) {
     h += '<div class="ai-btns">' +
       '<button class="btn solid" data-act="ai-meal-photo">🍽 拍这一餐</button>' +
       '<button class="btn" data-act="ai-label-photo">📷 拍成分表入库</button></div>' +
       '<div class="ai-text-row">' +
       '<input id="ai-meal-text" type="text" placeholder="或文字描述这一餐…">' +
       '<button class="btn" data-act="ai-meal-text">估算</button></div>' +
-      '<div class="hint" style="margin-top:6px">可一次选多张照片（正面＋成分表算同一个）。估算先给你改名字和克数，确认后才记录。</div>';
+      '<div class="hint" style="margin-top:6px">可一次选多张照片（正面＋成分表算同一个）。选好照片才会调用 AI；取消选择不花钱。估算先给你改名字和克数，确认后才记录。</div>';
   } else {
     h += '<div class="hint">先到「导出」页保存 ChatAnywhere 密钥，这里就能拍照或文字估算一餐、拍成分表入库。</div>';
   }
@@ -1544,12 +1548,11 @@ document.addEventListener("click", function (ev) {
     renderTodayTop();
   }
   else if (act === "save-ai-key") saveAiKey();
-  else if (act === "ai-label-photo") { b.textContent = "📷 识别中…"; aiPhotoStart("label"); }
-  else if (act === "ai-meal-photo") { b.textContent = "🍽 识别中…"; aiPhotoStart("meal"); }
+  else if (act === "ai-label-photo") { if (!aiBusy) aiPhotoStart("label"); }
+  else if (act === "ai-meal-photo") { if (!aiBusy) aiPhotoStart("meal"); }
   else if (act === "ai-meal-text") {
     var mtEl = document.getElementById("ai-meal-text");
-    b.textContent = "识别中…";
-    aiEstimateMealText(mtEl ? mtEl.value.trim() : "");
+    if (!aiBusy) aiEstimateMealText(mtEl ? mtEl.value.trim() : "");
   }
   else if (act === "meal-del") {
     var mi = parseInt(b.getAttribute("data-i"), 10);
