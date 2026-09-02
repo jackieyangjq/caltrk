@@ -120,13 +120,22 @@
   .trow .tl { font-family: var(--f-label); font-size: 12px; font-weight: 600; color: var(--text-dim); flex: none; width: 58px; }
   .trow input[type="range"] { flex: 1; min-width: 0; accent-color: var(--good); }
   .trow .tv { font-family: var(--f-num); font-variant-numeric: tabular-nums; font-size: 12px; flex: none; min-width: 74px; text-align: right; }
-  .hrow { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--hair); font-size: 12.5px; }
-  .hrow:last-child { border-bottom: none; }
+  .hint { font-size: 11.5px; color: var(--text-faint); line-height: 1.5; }
+  .bar.thin { height: 4px; border-radius: 2px; }
+  .hrow { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--hair); }
+  .hrow:last-of-type { border-bottom: none; }
+  .hrow .hl { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; }
   .hrow .hd { font-family: var(--f-num); color: var(--text-dim); flex: none; }
-  .hrow .hk { font-family: var(--f-num); font-variant-numeric: tabular-nums; font-weight: 700; flex: none; min-width: 46px; text-align: right; }
+  .hrow .hk { font-family: var(--f-num); font-variant-numeric: tabular-nums; font-weight: 700; flex: none; min-width: 44px; }
   .hrow .hk.over { color: var(--over); }
-  .hrow .hm { color: var(--text-faint); flex: 1; font-size: 11px; }
+  .hrow .hw { font-family: var(--f-num); font-size: 11.5px; color: var(--text-dim); flex: 1; }
   .hrow .hi { flex: none; font-size: 11px; color: var(--text-dim); }
+  .hrow .hm { font-size: 11px; color: var(--text-faint); font-family: var(--f-num); }
+  .chip.combo { border-color: var(--brass); background: var(--brass-bg); color: var(--brass); }
+  .uf-row { display: flex; align-items: center; gap: 6px; }
+  .uf-row .r-item { flex: 1; min-width: 0; }
+  .uf-del { flex: none; font-size: 12px; color: var(--over); padding: 6px 8px; border-radius: 6px; }
+  .uf-del[data-armed] { background: var(--over); color: var(--card); }
   .rowline { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; }
   .rowline .k { font-family: var(--f-label); font-weight: 600; color: var(--text-dim); }
   .rowline .v { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
@@ -337,6 +346,7 @@
       </div>
       <div id="quick-body"></div>
     </div>
+    <div id="ai-mod"></div>
     <div id="today-bottom" class="view" style="gap:14px"></div>
   </div>
 
@@ -351,7 +361,7 @@
       <div class="mod-title">图例</div>
       <div class="rowline"><span class="k"><i class="dot hi" style="display:inline-block"></i> 包装成分表</span><span class="v">误差 &lt;5%</span></div>
       <div class="rowline"><span class="k"><i class="dot lo" style="display:inline-block"></i> 通用成分表 / 目测</span><span class="v">误差 20–30%</span></div>
-      <div class="note" style="padding-top:6px">新食物：拍两张照片（外包装＋营养成分表）→ 相册分享 → OneDrive 传到「食物照片/待入库」，下次对话时批量入库，页面随之更新。</div>
+      <div class="note" style="padding-top:6px">新食物：在「今日」页用「拍成分表入库」，AI 读标签后存进下面的「我的食物」，页面自动做算术交叉验证。每周导出后分析端会复核这些条目，常用的转正进上面的正式库。</div>
     </div>
   </div>
 
@@ -377,7 +387,7 @@
    取原设计下限 1900。攒满一周完整记录+新导出后，周报用能量平衡
    反推真实消耗并校准这两个数。 */
 var BUILD = {
-  version: "1.7.1",
+  version: "1.8.0",
   built: "2026-09-01",
   kcal_target: 1900,     // 减脂目标：82.5kg → 78kg，每周约 −0.4~0.5kg
   tdee: 2300,            // 校准常数，随周报更新；不是当日实测消耗
@@ -646,14 +656,14 @@ function aiRequest(model, sys, userContent) {
 function aiChat(sys, userContent, onOk) {
   if (aiBusy) return;
   aiBusy = true;
-  renderTodayTop();   /* 真正发请求了才显示「识别中」 */
+  renderAiMod();   /* 真正发请求了才显示「识别中」 */
   aiRequest(AI.model, sys, userContent).then(function (txt) {
     return onOk(txt);
   }).catch(function (e) {
     alert("AI 识别失败：" + (e && e.message ? e.message : e) + "\n可以先用「记一条估计」，回头再补。");
   }).finally(function () {
     aiBusy = false;
-    renderTodayTop();
+    renderAiMod();
   });
 }
 /* ── 免费的算术自检：抓「千焦当大卡」「每份当每100g」这两类最常见错 ── */
@@ -833,7 +843,7 @@ aiInput.addEventListener("change", function () {
   });
 });
 function aiPhotosReady(urls) {
-  if (!urls.length) { alert("图片读取失败。"); renderTodayTop(); return; }
+  if (!urls.length) { alert("图片读取失败。"); renderAiMod(); return; }
   var content = urls.map(function (u) { return { type: "image_url", image_url: { url: u } }; });
   if (aiMode === "label") {
     content.push({ type: "text", text: "识别这个食物（" + urls.length + " 张照片为同一食物），按系统要求输出 JSON。" });
@@ -988,10 +998,8 @@ function openOrphanSheet(entry, id) {
     '</div>');
 }
 var flashId = null;
-function addEntry(foodId, portionLabel, grams, replaceId) {
-  var f = foodById(foodId);
-  if (!f || !(grams > 0) || grams > MAX_G) return null;
-  var entry = {
+function buildEntry(f, portionLabel, grams) {
+  return {
     id: newId(),
     ts: nowTs(), food_id: f.id, name: f.name, portion: portionLabel,
     grams: grams, kcal: kcalOf(f, grams), protein: protOf(f, grams),
@@ -999,6 +1007,33 @@ function addEntry(foodId, portionLabel, grams, replaceId) {
     carb: Math.round(f.per_100g.carb * grams / 100 * 10) / 10,
     confidence: f.confidence, pending: false
   };
+}
+/* 常吃组合（在代码里定义，改配比找分析端）：一键把几样一起记 */
+var COMBOS = [
+  { id: "combo-breakfast", name: "我的早餐", items: [["yogurt-whole", 200], ["whole-milk", 200], ["granola", 90]] }
+];
+function comboKcal(c) {
+  return c.items.reduce(function (a, it) { var f = foodById(it[0]); return a + (f ? kcalOf(f, it[1]) : 0); }, 0);
+}
+function logCombo(id) {
+  var c = COMBOS.filter(function (x) { return x.id === id; })[0];
+  if (!c) return;
+  var made = [];
+  c.items.forEach(function (it) {
+    var f = foodById(it[0]);
+    if (f) made.push(buildEntry(f, it[1] + " g", it[1]));
+  });
+  if (!made.length) return;
+  made.forEach(function (e) { DB.log.push(e); });
+  flashId = made[made.length - 1].id;
+  persist(K.log, DB.log);
+  renderToday();
+  showUndoToastMulti(made, c.name);
+}
+function addEntry(foodId, portionLabel, grams, replaceId) {
+  var f = foodById(foodId);
+  if (!f || !(grams > 0) || grams > MAX_G) return null;
+  var entry = buildEntry(f, portionLabel, grams);
   if (replaceId) {
     var idx = DB.log.findIndex(function (e) { return e.id === replaceId; });
     if (idx >= 0) { entry.ts = DB.log[idx].ts; DB.log[idx] = entry; }
@@ -1101,6 +1136,51 @@ function showUndoToast(entry) {
   document.body.appendChild(toastEl);
   toastTimer = setTimeout(dismissToast, 6000);
 }
+/* 多条一起记（组合、AI 估餐）的撤销条：一键全撤 */
+function showUndoToastMulti(entries, label) {
+  dismissToast();
+  var sum = entries.reduce(function (a, e) { return a + (e.kcal || 0); }, 0);
+  toastEl = document.createElement("div");
+  toastEl.className = "toast";
+  toastEl.innerHTML = '<span class="msg">已记 ' + esc(label) + '（' + entries.length + ' 项）<b>' + sum + '</b> kcal</span>' +
+    '<button data-toast="undo">撤销</button>';
+  toastEl.addEventListener("click", function (ev) {
+    if (!ev.target.closest("[data-toast]")) return;
+    var ids = entries.map(function (e) { return e.id; });
+    DB.log = DB.log.filter(function (e) { return ids.indexOf(e.id) < 0; });
+    persist(K.log, DB.log);
+    renderToday();
+    dismissToast();
+  });
+  document.body.appendChild(toastEl);
+  toastTimer = setTimeout(dismissToast, 6000);
+}
+/* AI 估算条目：改克数按每 100 g 密度重算（老条目没存密度就从总量反推） */
+function aiEntryPer100(e) {
+  if (e.per_100g) return e.per_100g;
+  var f = e.grams > 0 ? 100 / e.grams : 1;
+  return { kcal: (e.kcal || 0) * f, protein: (e.protein || 0) * f, fat: (e.fat || 0) * f, carb: (e.carb || 0) * f };
+}
+function openAiEntrySheet(e, id) {
+  var per = aiEntryPer100(e);
+  openSheet(
+    '<div class="sheet-h"><div class="nm">' + esc(e.name_raw || "AI 估算") + '</div>' +
+    '<div class="meta">AI 估算条目 · 每 100 g 约 ' + Math.round(per.kcal) + ' kcal</div></div>' +
+    '<div class="sheet-b" data-replace="' + id + '">' +
+      '<div class="field"><label>名称</label><input id="in-ai-name" type="text" value="' + esc(e.name_raw || "") + '"></div>' +
+      '<div class="field"><label>克数</label><input id="in-ai-g" type="number" inputmode="decimal" min="1" max="' + MAX_G + '" value="' + (e.grams || "") + '"></div>' +
+      '<div class="note" id="ai-g-preview">= ' + (e.kcal || 0) + ' kcal</div>' +
+      '<button class="btn solid" data-act="ai-entry-save">更新</button>' +
+      '<button class="btn danger" data-act="delete-entry">删除这条记录</button>' +
+    '</div>');
+  var gi = document.getElementById("in-ai-g");
+  gi.addEventListener("input", function () {
+    var g = parseFloat(gi.value);
+    var ok = g > 0 && g <= MAX_G;
+    gi.classList.toggle("bad", !!gi.value && !ok);
+    document.getElementById("ai-g-preview").textContent = ok ? "= " + Math.round(per.kcal * g / 100) + " kcal" : "";
+  });
+}
 
 /* ── 今日页 ─────────────────────────────────────────────── */
 var searchQuery = "";
@@ -1167,18 +1247,59 @@ function renderBanner() {
   el.innerHTML = html;
   el.style.display = html ? "" : "none";
 }
+function dayTotals(entries) {
+  var t = { intake: 0, prot: 0, fat: 0, carb: 0, hasGuess: false };
+  entries.forEach(function (e) {
+    t.intake += e.kcal || 0; t.prot += e.protein || 0;
+    t.fat += e.fat || 0; t.carb += e.carb || 0;
+    if (e.pending || e.confidence === "guess") t.hasGuess = true;
+  });
+  t.prot = Math.round(t.prot * 10) / 10; t.fat = Math.round(t.fat * 10) / 10; t.carb = Math.round(t.carb * 10) / 10;
+  return t;
+}
+function dateShift(dateStr, n) {
+  var x = new Date(dateStr + "T12:00"); x.setDate(x.getDate() + n);
+  return x.getFullYear() + "-" + pad2(x.getMonth() + 1) + "-" + pad2(x.getDate());
+}
+/* 近 7 天卡片：单日波动大，「有没有吃超」看周均才算数；晨重也看周均 */
+function renderWeekMod(today) {
+  var byDay = {};
+  DB.log.forEach(function (e) {
+    var d = (e.ts || "").slice(0, 10);
+    if (!d || d === today) return;
+    byDay[d] = (byDay[d] || 0) + (e.kcal || 0);
+  });
+  var days = [], compl = 0;
+  for (var i = 1; i <= 7; i++) {
+    var d = dateShift(today, -i);
+    if (byDay[d] != null) { days.push(byDay[d]); if (dayComplete(d)) compl++; }
+  }
+  var mw = DB.weight.filter(function (w) { return w.context === "morning" && w.kg > 0; });
+  var thisW = mw.filter(function (w) { return w.date > dateShift(today, -7) && w.date <= today; });
+  var prevW = mw.filter(function (w) { return w.date > dateShift(today, -14) && w.date <= dateShift(today, -7); });
+  function avg(a, key) { return a.length ? a.reduce(function (s, x) { return s + (key ? x[key] : x); }, 0) / a.length : null; }
+  var aI = avg(days), aW = avg(thisW, "kg"), pW = avg(prevW, "kg");
+  if (aI == null && aW == null) return "";
+  var h = '<div class="mod"><div class="mod-title">近 7 天</div>';
+  if (aI != null) {
+    var ai = Math.round(aI);
+    var diff = BUILD.kcal_target != null ? ai - BUILD.kcal_target : null;
+    h += '<div class="rowline"><span class="k">日均摄入</span><span class="v' + (diff > 0 ? " warn" : "") + '">' + ai + ' kcal' +
+      (diff == null ? "" : (diff > 0 ? "（超目标 " + diff + "）" : "（低于目标 " + (-diff) + "）")) + '</span></div>' +
+      '<div class="hint">' + days.length + ' 天有记录' + (compl ? '，' + compl + ' 天记全' : '') +
+      (days.length < 4 ? '——不足 4 天，均值只能参考' : '') + '</div>';
+  }
+  if (aW != null) {
+    var dw = pW != null ? Math.round((aW - pW) * 10) / 10 : null;
+    h += '<div class="rowline" style="margin-top:6px"><span class="k">晨重均值</span><span class="v">' + aW.toFixed(1) + ' kg' +
+      (dw == null ? "" : '（比上周 ' + (dw > 0 ? '+' : '') + dw.toFixed(1) + '）') + '</span></div>' +
+      '<div class="hint">' + thisW.length + ' 次晨称' + (thisW.length < 3 ? '——少于 3 次，趋势不可靠' : '') + '</div>';
+  }
+  return h + '</div>';
+}
 function renderTodayTop() {
   var el = document.getElementById("today-top");
-  var entries = entriesToday();
-  var intake = 0, prot = 0, fat = 0, carb = 0, hasGuess = false;
-  entries.forEach(function (e) {
-    intake += e.kcal || 0; prot += e.protein || 0;
-    fat += e.fat || 0; carb += e.carb || 0;
-    if (e.pending || e.confidence === "guess") hasGuess = true;
-  });
-  prot = Math.round(prot * 10) / 10;
-  fat = Math.round(fat * 10) / 10;
-  carb = Math.round(carb * 10) / 10;
+  var intake = dayTotals(entriesToday()).intake;
   var flash = flashId ? " flash" : "";
 
   var h = "";
@@ -1204,6 +1325,62 @@ function renderTodayTop() {
         (Math.round(Math.abs(BUILD.tdee - intake) * 7 / 7700 * 100) / 100) + " kg/周</b>。*基准消耗是校准出的常数，不是当日实测。") +
       '</div></div>';
   }
+  h += renderWeekMod(todayStr());
+  el.innerHTML = h;
+}
+function renderAiMod() {
+  var el = document.getElementById("ai-mod");
+  var h = '<div class="mod"><div class="mod-title">AI 记录</div>';
+  if (aiReady() && aiBusy) {
+    h += '<div class="ai-btns"><button class="btn" disabled>识别中…</button></div>' +
+      '<div class="hint">AI 正在分析，最多约一分钟。</div>';
+  } else if (aiReady()) {
+    h += '<div class="ai-btns">' +
+      '<button class="btn solid" data-act="ai-meal-photo">🍽 拍这一餐</button>' +
+      '<button class="btn" data-act="ai-label-photo">📷 拍成分表入库</button></div>' +
+      '<div class="ai-text-row">' +
+      '<input id="ai-meal-text" type="text" placeholder="或文字描述这一餐…">' +
+      '<button class="btn" data-act="ai-meal-text">估算</button></div>' +
+      '<div class="hint">可多选照片（正面＋成分表算同一个）；选好照片才调用 AI；估算先确认再记录。</div>';
+  } else {
+    h += '<div class="hint">先到「导出」页保存 ChatAnywhere 密钥，就能拍照或文字估算一餐、拍成分表入库。</div>';
+  }
+  el.innerHTML = h + '</div>';
+}
+function renderQuickBody() {
+  var el = document.getElementById("quick-body");
+  var h = "";
+  if (searchQuery) {
+    var q = searchQuery.toLowerCase();
+    var hits = allFoods().filter(function (f) { return f.name.toLowerCase().indexOf(q) >= 0 || f.id.indexOf(q) >= 0; });
+    h += '<div class="results">';
+    hits.forEach(function (f) {
+      var dp = f.portions.find(function (p) { return p.label === f.default_portion; }) || f.portions[0];
+      h += '<button class="r-item" data-act="open-food" data-food="' + f.id + '">' +
+        '<span class="nm"><i class="dot ' + (f.confidence === "high" ? "hi" : "lo") + '"></i><span>' + esc(f.name) + '</span></span>' +
+        '<span class="kc">' + esc(dp.label) + ' · ' + kcalOf(f, dp.grams) + '</span></button>';
+    });
+    if (!hits.length) h += '<div class="r-none">食物库里没有「' + esc(searchQuery) + '」。</div>';
+    h += '<button class="r-guess" data-act="open-guess">＋ 先记一条估计（' + esc(searchQuery) + '）</button></div>';
+  } else {
+    h += '<div class="chips">' + COMBOS.map(function (c) {
+      return '<button class="chip combo" data-act="quick-combo" data-combo="' + c.id + '">☆ ' + esc(c.name) +
+        ' <span class="kc">' + comboKcal(c) + '</span></button>';
+    }).join("") + chipCandidates().map(function (f) {
+      var dp = f.portions.find(function (p) { return p.label === f.default_portion; }) || f.portions[0];
+      return '<button class="chip" data-act="quick-log" data-food="' + f.id + '">' + esc(f.name) +
+        ' <span class="kc">' + kcalOf(f, dp.grams) + '</span></button>';
+    }).join("") + '</div>' +
+    '<div class="hint" style="padding-top:2px">点一下按常用份量记录，可撤销/改份量；☆ 是组合，一键记几样。搜索可挑份量或输克数。</div>';
+  }
+  el.innerHTML = h;
+}
+function renderTodayBottom() {
+  var el = document.getElementById("today-bottom");
+  var t = todayStr();
+  var entries = entriesToday();
+  var tot = dayTotals(entries);
+  var h = "";
   function macroRow(label, val, target, goodFill) {
     var over = val > target;
     var pct = Math.min(100, Math.round(val / target * 100));
@@ -1214,12 +1391,11 @@ function renderTodayTop() {
       '<div class="bar"><i class="' + (over ? 'fill-over' : goodFill) + '" style="width:' + pct + '%"></i></div>';
   }
   h += '<div class="mod"><div class="mod-title">营养素</div>' +
-    macroRow('蛋白质', prot, BUILD.protein_target, 'fill-good') +
-    macroRow('碳水', carb, BUILD.carb_target, 'fill-brass') +
-    macroRow('脂肪', fat, BUILD.fat_target, 'fill-brass') +
-    '<div class="hint" style="margin-top:7px">上限按每日 ' + BUILD.kcal_target + ' kcal 拆分：蛋白优先，脂肪约三成，其余归碳水。' +
-    (hasGuess ? '「估」的条目只计热量，碳蛋脂未计入。' : '') + '</div>' +
-    '</div>';
+    macroRow('蛋白质', tot.prot, BUILD.protein_target, 'fill-good') +
+    macroRow('碳水', tot.carb, BUILD.carb_target, 'fill-brass') +
+    macroRow('脂肪', tot.fat, BUILD.fat_target, 'fill-brass') +
+    '<div class="hint" style="margin-top:6px">上限由每日 ' + BUILD.kcal_target + ' kcal 拆分：蛋白优先、脂肪约三成、其余碳水。' +
+    (tot.hasGuess ? '「估」条目只计热量。' : '') + '</div></div>';
 
   var tr = trainingToday();
   var sel = tr ? tr.types : [];
@@ -1241,56 +1417,9 @@ function renderTodayTop() {
   if (estM > 0) {
     h += '<div class="rowline" style="margin-top:9px"><span class="k">估算消耗</span><span class="v" id="t-est">约 ' + estK + ' kcal · ' + estM + ' 分钟</span></div>';
   }
-  h += '<div class="hint" style="margin-top:6px">时长可拖动调整；消耗按你过去半年手表实测的每分钟均值折算，只作记录，不加进每日额度（基准消耗已含平时训练）。</div></div>';
+  h += '<div class="hint" style="margin-top:6px">拖动改时长；消耗按你手表实测均值折算，只作记录、不计入额度。</div></div>';
 
-  h += '<div class="mod"><div class="mod-title">AI 记录</div>';
-  if (aiReady() && aiBusy) {
-    h += '<div class="ai-btns"><button class="btn" disabled>识别中…</button></div>' +
-      '<div class="hint" style="margin-top:6px">AI 正在分析，最多约一分钟。</div>';
-  } else if (aiReady()) {
-    h += '<div class="ai-btns">' +
-      '<button class="btn solid" data-act="ai-meal-photo">🍽 拍这一餐</button>' +
-      '<button class="btn" data-act="ai-label-photo">📷 拍成分表入库</button></div>' +
-      '<div class="ai-text-row">' +
-      '<input id="ai-meal-text" type="text" placeholder="或文字描述这一餐…">' +
-      '<button class="btn" data-act="ai-meal-text">估算</button></div>' +
-      '<div class="hint" style="margin-top:6px">可一次选多张照片（正面＋成分表算同一个）。选好照片才会调用 AI；取消选择不花钱。估算先给你改名字和克数，确认后才记录。</div>';
-  } else {
-    h += '<div class="hint">先到「导出」页保存 ChatAnywhere 密钥，这里就能拍照或文字估算一餐、拍成分表入库。</div>';
-  }
-  h += '</div>';
-  el.innerHTML = h;
-}
-function renderQuickBody() {
-  var el = document.getElementById("quick-body");
-  var h = "";
-  if (searchQuery) {
-    var q = searchQuery.toLowerCase();
-    var hits = allFoods().filter(function (f) { return f.name.toLowerCase().indexOf(q) >= 0 || f.id.indexOf(q) >= 0; });
-    h += '<div class="results">';
-    hits.forEach(function (f) {
-      var dp = f.portions.find(function (p) { return p.label === f.default_portion; }) || f.portions[0];
-      h += '<button class="r-item" data-act="open-food" data-food="' + f.id + '">' +
-        '<span class="nm"><i class="dot ' + (f.confidence === "high" ? "hi" : "lo") + '"></i><span>' + esc(f.name) + '</span></span>' +
-        '<span class="kc">' + esc(dp.label) + ' · ' + kcalOf(f, dp.grams) + '</span></button>';
-    });
-    if (!hits.length) h += '<div class="r-none">食物库里没有「' + esc(searchQuery) + '」。</div>';
-    h += '<button class="r-guess" data-act="open-guess">＋ 先记一条估计（' + esc(searchQuery) + '）</button></div>';
-  } else {
-    h += '<div class="chips">' + chipCandidates().map(function (f) {
-      var dp = f.portions.find(function (p) { return p.label === f.default_portion; }) || f.portions[0];
-      return '<button class="chip" data-act="quick-log" data-food="' + f.id + '">' + esc(f.name) +
-        ' <span class="kc">' + kcalOf(f, dp.grams) + '</span></button>';
-    }).join("") + '</div>' +
-    '<div class="note" style="padding-top:2px">点一下直接按常用份量记录（可撤销/改份量）；搜索里点选可挑份量或输克数。</div>';
-  }
-  el.innerHTML = h;
-}
-function renderTodayBottom() {
-  var el = document.getElementById("today-bottom");
-  var t = todayStr();
-  var entries = entriesToday();
-  var h = '<div class="mod"><div class="mod-title">今日流水</div>';
+  h += '<div class="mod"><div class="mod-title">今日流水</div>';
   if (!entries.length) {
     h += '<div class="empty">还没有记录。点上面的食物，一下就记完一条。</div>';
   } else {
@@ -1322,7 +1451,8 @@ function renderTodayBottom() {
   h += renderHistoryMod(t);
   el.innerHTML = h;
 }
-/* 过去 14 天概览：摄入 vs 目标、碳蛋脂、训练、是否记全 */
+/* 过去 7/14 天概览：摄入 vs 目标（细条）、晨重、碳蛋脂、训练、是否记全 */
+var histExpanded = false;
 function renderHistoryMod(today) {
   var byDay = {};
   DB.log.forEach(function (e) {
@@ -1335,31 +1465,41 @@ function renderHistoryMod(today) {
   DB.training.forEach(function (r) {
     if (r.date !== today && r.types && r.types.length && !byDay[r.date]) byDay[r.date] = { kcal: 0, prot: 0, carb: 0, fat: 0 };
   });
-  var dates = Object.keys(byDay).sort().reverse().slice(0, 14);
-  var h = '<div class="mod"><div class="mod-title">过去 14 天</div>';
+  var all = Object.keys(byDay).sort().reverse();
+  var dates = all.slice(0, histExpanded ? 14 : 7);
+  var h = '<div class="mod"><div class="mod-title">过去 ' + (histExpanded ? 14 : 7) + ' 天</div>';
   if (!dates.length) {
-    return h + '<div class="hint">记录攒起来后，这里会按天显示摄入、营养素和训练。</div></div>';
+    return h + '<div class="hint">记录攒起来后，这里按天显示摄入、体重和训练。</div></div>';
   }
   var WD = ["日", "一", "二", "三", "四", "五", "六"];
   var TN = { strength: "力", incline: "坡", stairs: "梯" };
+  var mwByDate = {};
+  DB.weight.forEach(function (w) { if (w.context === "morning") mwByDate[w.date] = w.kg; });
   dates.forEach(function (d) {
     var r = byDay[d];
     var wd = WD[new Date(d + "T12:00").getDay()];
     var tr = trainingOn(d);
     var icons = (tr && tr.types ? tr.types.map(function (x) { return TN[x] || ""; }).join("") : "");
-    var overCls = (BUILD.kcal_target != null && r.kcal > BUILD.kcal_target) ? " over" : "";
-    h += '<div class="hrow"><span class="hd">' + d.slice(5) + ' ' + wd + '</span>' +
-      '<span class="hk' + overCls + '">' + Math.round(r.kcal) + '</span>' +
-      '<span class="hm">蛋' + Math.round(r.prot) + ' 碳' + Math.round(r.carb) + ' 脂' + Math.round(r.fat) + '</span>' +
-      '<span class="hi">' + (icons ? "练:" + icons : "") + (dayComplete(d) ? " ✓" : "") + '</span></div>';
+    var over = BUILD.kcal_target != null && r.kcal > BUILD.kcal_target;
+    var pct = BUILD.kcal_target ? Math.min(100, Math.round(r.kcal / BUILD.kcal_target * 100)) : 0;
+    h += '<div class="hrow">' +
+      '<div class="hl"><span class="hd">' + d.slice(5) + ' ' + wd + '</span>' +
+        '<span class="hk' + (over ? " over" : "") + '">' + Math.round(r.kcal) + '</span>' +
+        '<span class="hw">' + (mwByDate[d] != null ? mwByDate[d].toFixed(1) + ' kg' : '') + '</span>' +
+        '<span class="hi">' + (icons ? "练:" + icons : "") + (dayComplete(d) ? " ✓" : "") + '</span></div>' +
+      '<div class="bar thin"><i class="' + (over ? "fill-over" : "fill-brass") + '" style="width:' + pct + '%"></i></div>' +
+      '<div class="hm">蛋 ' + Math.round(r.prot) + ' · 碳 ' + Math.round(r.carb) + ' · 脂 ' + Math.round(r.fat) + '</div></div>';
   });
-  h += '<div class="hint" style="margin-top:6px">数字是当天摄入 kcal，红色 = 超过目标；✓ = 当天标记过「记全了」。</div></div>';
-  return h;
+  if (all.length > 7) {
+    h += '<button class="r-guess" data-act="hist-toggle">' + (histExpanded ? "只看 7 天" : "显示 14 天") + '</button>';
+  }
+  return h + '</div>';
 }
 function renderToday() {
   renderBanner();
   renderTodayTop();
   renderQuickBody();
+  renderAiMod();
   renderTodayBottom();
   flashId = null;
 }
@@ -1500,12 +1640,22 @@ var libComposing = false;
 function renderLibrary() {
   var el = document.getElementById("lib-body");
   var q = libQuery.toLowerCase();
-  var list = FOOD_LIBRARY.filter(function (f) { return !q || f.name.toLowerCase().indexOf(q) >= 0; });
-  el.innerHTML = list.map(function (f) {
+  function row(f) {
     return '<button class="r-item" data-act="open-food" data-food="' + f.id + '">' +
       '<span class="nm"><i class="dot ' + (f.confidence === "high" ? "hi" : "lo") + '"></i><span>' + esc(f.name) + '</span></span>' +
       '<span class="kc">' + f.per_100g.kcal + ' /100g</span></button>';
-  }).join("") || '<div class="empty">没有匹配的食物。</div>';
+  }
+  function match(f) { return !q || f.name.toLowerCase().indexOf(q) >= 0; }
+  var h = FOOD_LIBRARY.filter(match).map(row).join("");
+  var mine = USER_FOODS.filter(match);
+  if (mine.length) {
+    h += '<div class="mod-title" style="padding:12px 0 4px">我的食物（手机上 AI 入库）</div>' +
+      mine.map(function (f) {
+        return '<div class="uf-row">' + row(f) +
+          '<button class="uf-del" data-act="del-userfood" data-food="' + f.id + '">删除</button></div>';
+      }).join("");
+  }
+  el.innerHTML = h || '<div class="empty">没有匹配的食物。</div>';
 }
 elLib.addEventListener("compositionstart", function () { libComposing = true; });
 elLib.addEventListener("compositionend", function () { libComposing = false; libQuery = elLib.value; renderLibrary(); });
@@ -1599,7 +1749,7 @@ document.querySelector(".tabs").addEventListener("click", function (ev) {
 });
 
 /* 快速连点保护：这些动作依赖面板还开着 */
-var NEED_SHEET = { "pick-portion": 1, "pick-grams": 1, "confirm-grams": 1, "confirm-guess": 1, "delete-entry": 1, "pick-amount": 1, "meal-del": 1, "meal-confirm": 1 };
+var NEED_SHEET = { "pick-portion": 1, "pick-grams": 1, "confirm-grams": 1, "confirm-guess": 1, "delete-entry": 1, "pick-amount": 1, "meal-del": 1, "meal-confirm": 1, "ai-entry-save": 1 };
 document.addEventListener("click", function (ev) {
   var b = ev.target.closest("[data-act]");
   if (!b) return;
@@ -1654,7 +1804,7 @@ document.addEventListener("click", function (ev) {
     } else if (e.pending || !e.ai) {
       openGuessSheet("", id);
     } else {
-      openOrphanSheet(e, id);
+      openAiEntrySheet(e, id);
     }
   }
   else if (act === "delete-entry") {
@@ -1669,7 +1819,37 @@ document.addEventListener("click", function (ev) {
   }
   else if (act === "toggle-training") {
     toggleTraining(b.getAttribute("data-type"));
-    renderTodayTop();
+    renderTodayBottom();
+  }
+  else if (act === "hist-toggle") { histExpanded = !histExpanded; renderTodayBottom(); }
+  else if (act === "quick-combo") logCombo(b.getAttribute("data-combo"));
+  else if (act === "del-userfood") {
+    if (b.getAttribute("data-armed")) {
+      var ufid = b.getAttribute("data-food");
+      USER_FOODS = USER_FOODS.filter(function (f) { return f.id !== ufid; });
+      persist(UF_KEY, USER_FOODS);
+      renderLibrary();
+    } else { b.setAttribute("data-armed", "1"); b.textContent = "确认删除？"; }
+  }
+  else if (act === "ai-entry-save") {
+    var ae = DB.log.find(function (x) { return x.id === replaceId; });
+    var gEl2 = document.getElementById("in-ai-g"), nEl2 = document.getElementById("in-ai-name");
+    if (!ae || !gEl2) return;
+    var g2 = parseFloat(gEl2.value);
+    if (!(g2 > 0 && g2 <= MAX_G)) { gEl2.classList.add("bad"); return; }
+    var per2 = aiEntryPer100(ae);
+    ae.per_100g = { kcal: Math.round(per2.kcal * 10) / 10, protein: Math.round(per2.protein * 10) / 10,
+                    fat: Math.round(per2.fat * 10) / 10, carb: Math.round(per2.carb * 10) / 10 };
+    ae.grams = Math.round(g2); ae.portion = ae.grams + " g";
+    ae.kcal = Math.round(per2.kcal * g2 / 100);
+    ae.protein = Math.round(per2.protein * g2 / 100 * 10) / 10;
+    ae.fat = Math.round(per2.fat * g2 / 100 * 10) / 10;
+    ae.carb = Math.round(per2.carb * g2 / 100 * 10) / 10;
+    if (nEl2 && nEl2.value.trim()) ae.name_raw = nEl2.value.trim().slice(0, 30);
+    flashId = ae.id;
+    persist(K.log, DB.log);
+    closeSheet();
+    renderToday();
   }
   else if (act === "save-ai-key") saveAiKey();
   else if (act === "ai-label-photo") { if (!aiBusy) aiPhotoStart("label"); }
@@ -1690,21 +1870,26 @@ document.addEventListener("click", function (ev) {
     if (!MEAL_DRAFT) return;
     var mItems = MEAL_DRAFT.items.filter(function (it) { return it.grams > 0 && it.name; });
     if (!mItems.length) { MEAL_DRAFT = null; closeSheet(); return; }
+    var madeM = [];
     mItems.forEach(function (it) {
-      DB.log.push({
+      var en = {
         id: newId(), ts: nowTs(), food_id: null, name_raw: it.name,
         portion: Math.round(it.grams) + " g", grams: Math.round(it.grams),
         kcal: mealItemKcal(it),
         protein: Math.round(it.per_100g.protein * it.grams / 100 * 10) / 10,
         fat: Math.round(it.per_100g.fat * it.grams / 100 * 10) / 10,
         carb: Math.round(it.per_100g.carb * it.grams / 100 * 10) / 10,
+        per_100g: it.per_100g,
         confidence: "low", pending: false, ai: true
-      });
+      };
+      DB.log.push(en); madeM.push(en);
     });
+    flashId = madeM[madeM.length - 1].id;
     persist(K.log, DB.log);
     MEAL_DRAFT = null;
     closeSheet();
     renderToday();
+    showUndoToastMulti(madeM, "AI 估算");
   }
   else if (act === "dismiss-banner") {
     ev.stopPropagation();
@@ -1759,7 +1944,7 @@ document.addEventListener("input", function (ev) {
   if (te) te.textContent = "约 " + estK + " kcal · " + estM + " 分钟";
 }, true);
 document.addEventListener("change", function (ev) {
-  if (ev.target.hasAttribute && ev.target.hasAttribute("data-tmin")) renderTodayTop();
+  if (ev.target.hasAttribute && ev.target.hasAttribute("data-tmin")) renderTodayBottom();
   /* 模型下拉选「自定义…」时显示手输框 */
   if (ev.target.hasAttribute && ev.target.hasAttribute("data-modelsel")) {
     var ci = document.getElementById(ev.target.getAttribute("data-modelsel"));
