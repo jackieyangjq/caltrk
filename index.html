@@ -384,12 +384,18 @@
    2026-09-01 应用户要求提前设定目标（原计划等首周完整记录）：
    tdee 2300 来自 8/6 导出的手表数据估算（近30天基础+活动中位≈2230，
    全英国期间≈2500，取偏保守中值），kcal_target = 约 −400 缺口、
-   取原设计下限 1900。攒满一周完整记录+新导出后，周报用能量平衡
-   反推真实消耗并校准这两个数。 */
+   取原设计下限 1900。
+
+   2026-09-06 首周复盘按计划做了能量平衡校准，结论是数据不够、两个数维持不变：
+   5 个晨重点拟合出 −130 g/天，但 95% 区间是 −399…+139 g/天（p=0.41），
+   反推的日消耗区间 819–4961 kcal，没有信息量。手表近 30 天在英国的 22 天
+   总消耗中位数 2262 kcal，与 2300 的差在噪声内。下次校准等积累到 3–4 周晨重。
+   另：减脂终点「78 kg」应按晨重计——同日晨重与其他时段差 0.5–1.0 kg
+   （首周均值 0.7），不统一口径终点会偏掉近一公斤。 */
 var BUILD = {
-  version: "1.8.0",
-  built: "2026-09-01",
-  kcal_target: 1900,     // 减脂目标：82.5kg → 78kg，每周约 −0.4~0.5kg
+  version: "1.9.0",
+  built: "2026-09-06",
+  kcal_target: 1900,     // 减脂目标：晨重 82.5kg → 78kg，每周约 −0.4~0.5kg
   tdee: 2300,            // 校准常数，随周报更新；不是当日实测消耗
   protein_target: 150,
   /* 碳/脂上限由 1900 分解而来：蛋白150g=600kcal + 脂肪60g=540kcal
@@ -460,8 +466,34 @@ var FOOD_LIBRARY = [
   { id: "tesco-finest-smoked-haddock-fishcake", name: "Tesco Finest 烟熏黑线鳕鱼饼（芝士夹心）", per_100g: { kcal: 201, protein: 10.2, fat: 9.9, carb: 17.8 },
     portions: [{ label: "1 个", grams: 136 }, { label: "整包 2 个", grams: 271 }], default_portion: "1 个", confidence: "high" },
   { id: "tesco-red-seedless-grapes", name: "Tesco 红提（无籽红葡萄，盒装）", per_100g: { kcal: 67, protein: 0.6, fat: 0.2, carb: 16.0 },
-    portions: [{ label: "整盒 500g", grams: 500 }, { label: "半盒", grams: 250 }, { label: "一小把约 100g", grams: 100 }], default_portion: "半盒", confidence: "low" }
+    portions: [{ label: "整盒 500g", grams: 500 }, { label: "半盒", grams: 250 }, { label: "一小把约 100g", grams: 100 }], default_portion: "半盒", confidence: "low" },
+  /* 以下 4 条由 2026-09-06 周报从「我的食物」转正：首周各用过 2 次以上，
+     每 100 克数值都是标签实读且通过算术交叉验证。原个人食物条目见 UF_RETIRED。 */
+  { id: "on-whey-strawberry", name: "Optimum Nutrition 草莓乳清蛋白粉", per_100g: { kcal: 378, protein: 79.0, fat: 4.2, carb: 5.5 },
+    portions: [{ label: "1 勺 30g", grams: 30 }, { label: "2 勺 60g", grams: 60 }], default_portion: "1 勺 30g", confidence: "high" },
+  { id: "grahams-cottage-cheese", name: "Graham's 乡村奶酪（天然）", per_100g: { kcal: 104, protein: 12.0, fat: 4.5, carb: 3.6 },
+    portions: [{ label: "一小勺约 10g", grams: 10 }, { label: "整盒 300g", grams: 300 }], default_portion: "一小勺约 10g", confidence: "high" },
+  { id: "grahams-jersey-whole-milk", name: "Graham's Jersey 全脂牛奶（比普通全脂高）", per_100g: { kcal: 74, protein: 3.6, fat: 4.8, carb: 4.4 },
+    portions: [{ label: "100 g", grams: 100 }, { label: "1 杯 250ml", grams: 250 }, { label: "整瓶 1L", grams: 1000 }], default_portion: "100 g", confidence: "high" },
+  { id: "tesco-plums-suntrail", name: "Tesco 李子（Suntrail Farms 熟成，1kg 袋）", per_100g: { kcal: 42, protein: 0.6, fat: 0.1, carb: 8.8 },
+    portions: [{ label: "1 个约 75g", grams: 75 }, { label: "2 个约 150g", grams: 150 }, { label: "整包 1kg", grams: 1000 }], default_portion: "1 个约 75g", confidence: "high" }
 ];
+
+/* ── 已退役的个人食物（2026-09-06 周报）───────────────────
+   这些条目在手机的 localStorage 里，页面不会替你删——只是不再让它们
+   出现在搜索和快速记录里，并在食物库页单独列出原因，删不删你自己定。
+   已经记进流水的条目不受影响：流水里的营养值是当时写死的，不回查食物库。
+   key = 个人食物 id；by = 取代它的正式条目 id（null 表示单纯数据有误）。 */
+var UF_RETIRED = {
+  "uf-mtizzqpo": { by: "on-whey-strawberry",        why: "已转成正式条目" },
+  "uf-mtkfdrx5": { by: "grahams-cottage-cheese",    why: "已转成正式条目" },
+  "uf-mtojka7b": { by: "grahams-jersey-whole-milk", why: "已转成正式条目" },
+  "uf-mtojgob8": { by: "tesco-plums-suntrail",      why: "已转成正式条目" },
+  "uf-mtldygj5": { by: "tesco-beef-quarter-pounder", why: "与正式条目重复，数值一模一样" },
+  "uf-mtizxzcd": { by: null, why: "每 100 克的蛋白写成了一勺（30g）的 24g，数值错误" },
+  "uf-mtojhvad": { by: null, why: "标 107 kcal/100g，按蛋白脂肪碳水只算得出 80，差 25%，建议重拍标签" },
+  "uf-mtojjb9f": { by: null, why: "入库时整包热量就没通过交叉验证，建议重拍标签" }
+};
 
 /* ── 存储（键名一经发布不得更改，设计 §4.6）──────────────── */
 var K = {
@@ -595,7 +627,9 @@ function modelSelHtml(id, inId, opts, current) {
 }
 var USER_FOODS = loadArr(UF_KEY);
 function aiReady() { return !!(AI.key && AI.key.length > 8); }
-function allFoods() { return FOOD_LIBRARY.concat(USER_FOODS); }
+function allFoodsRaw() { return FOOD_LIBRARY.concat(USER_FOODS); }
+/* 搜索、快速记录、食物库正表都用这个：退役条目不再出现 */
+function allFoods() { return allFoodsRaw().filter(function (f) { return !UF_RETIRED[f.id]; }); }
 
 function saveAiKey() {
   var inp = document.getElementById("ai-key-in");
@@ -882,8 +916,9 @@ function nowTs() { var d = new Date(); return todayStr() + "T" + pad2(d.getHours
 function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 function kcalOf(food, grams) { return Math.round(food.per_100g.kcal * grams / 100); }
 function protOf(food, grams) { return Math.round(food.per_100g.protein * grams / 100 * 10) / 10; }
+/* 用全量：老流水引用的退役条目也要能查到，否则编辑旧记录会掉进「找不到来源」的兜底面板 */
 function foodById(id) {
-  var all = allFoods();
+  var all = allFoodsRaw();
   for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
   return null;
 }
@@ -1197,7 +1232,10 @@ function chipCandidates() {
   var score = {};
   DB.log.forEach(function (e) {
     if (!e.food_id) return;
-    score[e.food_id] = (score[e.food_id] || 0) + 1 + (mealOf(e.ts) === slot ? 2 : 0);
+    /* 转正换了 id，历史常用度要跟着过去，否则蛋白粉这种天天记的会掉出快速记录 */
+    var r = UF_RETIRED[e.food_id];
+    var key = (r && r.by) ? r.by : e.food_id;
+    score[key] = (score[key] || 0) + 1 + (mealOf(e.ts) === slot ? 2 : 0);
   });
   var all = allFoods();
   var lib = all.slice();
@@ -1647,12 +1685,26 @@ function renderLibrary() {
   }
   function match(f) { return !q || f.name.toLowerCase().indexOf(q) >= 0; }
   var h = FOOD_LIBRARY.filter(match).map(row).join("");
-  var mine = USER_FOODS.filter(match);
+  var mine = USER_FOODS.filter(function (f) { return match(f) && !UF_RETIRED[f.id]; });
+  var retired = USER_FOODS.filter(function (f) { return match(f) && UF_RETIRED[f.id]; });
+  function delRow(f) {
+    return '<div class="uf-row">' + row(f) +
+      '<button class="uf-del" data-act="del-userfood" data-food="' + f.id + '">删除</button></div>';
+  }
   if (mine.length) {
     h += '<div class="mod-title" style="padding:12px 0 4px">我的食物（手机上 AI 入库）</div>' +
-      mine.map(function (f) {
-        return '<div class="uf-row">' + row(f) +
-          '<button class="uf-del" data-act="del-userfood" data-food="' + f.id + '">删除</button></div>';
+      mine.map(delRow).join("");
+  }
+  if (retired.length) {
+    h += '<div class="mod-title" style="padding:14px 0 4px">已停用（周报核对后）</div>' +
+      '<div class="hint" style="padding-bottom:6px">下面这些不再出现在搜索和快速记录里，' +
+      '已经记过的流水不受影响。删不删随你，留着也没有副作用。</div>' +
+      retired.map(function (f) {
+        var r = UF_RETIRED[f.id];
+        var to = r.by ? foodById(r.by) : null;
+        return delRow(f) +
+          '<div class="hint" style="padding:2px 0 8px">' + esc(r.why) +
+          (to ? '，改用「' + esc(to.name) + '」' : '') + '</div>';
       }).join("");
   }
   el.innerHTML = h || '<div class="empty">没有匹配的食物。</div>';
