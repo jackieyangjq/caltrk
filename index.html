@@ -168,6 +168,14 @@
   }
   .chip:active { border-color: var(--brass); background: var(--brass-bg); }
   .chip .kc { font-family: var(--f-num); font-variant-numeric: tabular-nums; font-size: 11px; color: var(--text-faint); }
+  .chip .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* 一个食物两个点法：左段=常用份量，右段=上次称的克数，挤在一颗胶囊里不会拆行 */
+  .chipwrap { display: inline-flex; max-width: 100%; }
+  .chipwrap .chip { min-width: 0; border-radius: 7px 0 0 7px; }
+  .chipwrap .chip.lastg {
+    flex: none; border-radius: 0 7px 7px 0; border-left: none;
+    color: var(--text-dim); padding-left: 8px;
+  }
 
   .search {
     display: flex; align-items: center; gap: 8px;
@@ -393,7 +401,7 @@
    另：减脂终点「78 kg」应按晨重计——同日晨重与其他时段差 0.5–1.0 kg
    （首周均值 0.7），不统一口径终点会偏掉近一公斤。 */
 var BUILD = {
-  version: "1.10.0",
+  version: "1.11.0",
   built: "2026-09-12",
   kcal_target: 1900,     // 减脂目标：晨重 82.5kg → 78kg，每周约 −0.4~0.5kg
   tdee: 2300,            // 校准常数，随周报更新；不是当日实测消耗
@@ -977,9 +985,13 @@ function setDayComplete(date, val) {
   DB.days.push({ date: date, complete: val });
   persist(K.days, DB.days);
 }
+/* 最后一次记这样东西用了多少克。重复/转正的条目按 UF_SAME_AS 归并，
+   否则换了 id 之后「上次克数」会突然找不到 */
 function lastGramsOf(foodId) {
   for (var i = DB.log.length - 1; i >= 0; i--) {
-    if (DB.log[i].food_id === foodId && DB.log[i].grams > 0) return DB.log[i].grams;
+    var e = DB.log[i];
+    if (!e.food_id || !(e.grams > 0)) continue;
+    if ((UF_SAME_AS[e.food_id] || e.food_id) === foodId) return e.grams;
   }
   return null;
 }
@@ -1458,6 +1470,7 @@ function renderAiMod() {
   }
   el.innerHTML = h + '</div>';
 }
+var CHIP_LAST_MIN_KCAL = 25;
 function renderQuickBody() {
   var el = document.getElementById("quick-body");
   var h = "";
@@ -1480,10 +1493,19 @@ function renderQuickBody() {
         ' <span class="kc">' + comboKcal(c) + '</span></button>';
     }).join("") + chipCandidates(8).map(function (f) {
       var dp = f.portions.find(function (p) { return p.label === f.default_portion; }) || f.portions[0];
-      return '<button class="chip" data-act="quick-log" data-food="' + f.id + '">' + esc(f.name) +
-        ' <span class="kc">' + kcalOf(f, dp.grams) + '</span></button>';
+      var main = '<button class="chip" data-act="quick-log" data-food="' + f.id + '">' +
+        '<span class="t">' + esc(f.name) + '</span>' +
+        '<span class="kc">' + kcalOf(f, dp.grams) + '</span></button>';
+      /* 他用厨房秤：上次称的克数和常用份量差得明显时（≥ CHIP_LAST_MIN_KCAL），多给一个点法。
+         差几克的不显示——蛋白粉预设 1 勺 30 g、他实际 48 g 这种才值得单独一个按钮 */
+      var lg = lastGramsOf(f.id);
+      if (lg == null || lg === dp.grams) return main;
+      if (Math.abs(kcalOf(f, lg) - kcalOf(f, dp.grams)) < CHIP_LAST_MIN_KCAL) return main;
+      return '<span class="chipwrap">' + main +
+        '<button class="chip lastg" data-act="quick-log-last" data-food="' + f.id + '" data-g="' + lg + '">' +
+        '上次 ' + lg + ' g <span class="kc">' + kcalOf(f, lg) + '</span></button></span>';
     }).join("") + '</div>' +
-    '<div class="hint" style="padding-top:2px">按最近吃得多的排，点一下就按常用份量记一条，可撤销/改份量；☆ 是组合，一键记几样。搜索可挑份量或输克数。</div>';
+    '<div class="hint" style="padding-top:2px">按最近吃得多的排。点名字＝按常用份量（一勺／一个／一包）记一条；旁边出现「上次 N g」时点它＝按你上次称的克数记（只在两者差 25 kcal 以上时出现）。都能撤销、能改份量。☆ 是组合，一键记几样。搜索可挑份量或输克数。</div>';
   }
   el.innerHTML = h;
 }
@@ -1903,6 +1925,12 @@ document.addEventListener("click", function (ev) {
     if (!dp) return;
     var entry = addEntry(qf.id, dp.label, dp.grams, null);
     if (entry) showUndoToast(entry);
+  }
+  else if (act === "quick-log-last") {
+    var lf = foodById(b.getAttribute("data-food")), lgv = parseFloat(b.getAttribute("data-g"));
+    if (!lf || !(lgv > 0)) return;
+    var le = addEntry(lf.id, Math.round(lgv) + " g", lgv, null);
+    if (le) showUndoToast(le);
   }
   else if (act === "open-food") openPortionSheet(b.getAttribute("data-food"), null);
   else if (act === "pick-portion") {
