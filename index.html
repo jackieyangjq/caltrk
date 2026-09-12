@@ -361,7 +361,7 @@
       <div class="mod-title">图例</div>
       <div class="rowline"><span class="k"><i class="dot hi" style="display:inline-block"></i> 包装成分表</span><span class="v">误差 &lt;5%</span></div>
       <div class="rowline"><span class="k"><i class="dot lo" style="display:inline-block"></i> 通用成分表 / 目测</span><span class="v">误差 20–30%</span></div>
-      <div class="note" style="padding-top:6px">新食物：在「今日」页用「拍成分表入库」，AI 读标签后存进下面的「我的食物」，页面自动做算术交叉验证。每周导出后分析端会复核这些条目，常用的转正进上面的正式库。</div>
+      <div class="note" style="padding-top:6px">新食物：在「今日」页用「拍成分表入库」，AI 读标签后存进「我的食物」，页面自动做算术交叉验证。每周导出后分析端会复核这些条目：数值或名字有错的直接改对（不会把条目拿掉），常吃的转正进食物库。</div>
     </div>
   </div>
 
@@ -393,8 +393,8 @@
    另：减脂终点「78 kg」应按晨重计——同日晨重与其他时段差 0.5–1.0 kg
    （首周均值 0.7），不统一口径终点会偏掉近一公斤。 */
 var BUILD = {
-  version: "1.9.0",
-  built: "2026-09-06",
+  version: "1.10.0",
+  built: "2026-09-12",
   kcal_target: 1900,     // 减脂目标：晨重 82.5kg → 78kg，每周约 −0.4~0.5kg
   tdee: 2300,            // 校准常数，随周报更新；不是当日实测消耗
   protein_target: 150,
@@ -468,7 +468,7 @@ var FOOD_LIBRARY = [
   { id: "tesco-red-seedless-grapes", name: "Tesco 红提（无籽红葡萄，盒装）", per_100g: { kcal: 67, protein: 0.6, fat: 0.2, carb: 16.0 },
     portions: [{ label: "整盒 500g", grams: 500 }, { label: "半盒", grams: 250 }, { label: "一小把约 100g", grams: 100 }], default_portion: "半盒", confidence: "low" },
   /* 以下 4 条由 2026-09-06 周报从「我的食物」转正：首周各用过 2 次以上，
-     每 100 克数值都是标签实读且通过算术交叉验证。原个人食物条目见 UF_RETIRED。 */
+     每 100 克数值都是标签实读且通过算术交叉验证。原个人食物条目见 UF_SAME_AS。 */
   { id: "on-whey-strawberry", name: "Optimum Nutrition 草莓乳清蛋白粉", per_100g: { kcal: 378, protein: 79.0, fat: 4.2, carb: 5.5 },
     portions: [{ label: "1 勺 30g", grams: 30 }, { label: "2 勺 60g", grams: 60 }], default_portion: "1 勺 30g", confidence: "high" },
   { id: "grahams-cottage-cheese", name: "Graham's 乡村奶酪（天然）", per_100g: { kcal: 104, protein: 12.0, fat: 4.5, carb: 3.6 },
@@ -479,20 +479,36 @@ var FOOD_LIBRARY = [
     portions: [{ label: "1 个约 75g", grams: 75 }, { label: "2 个约 150g", grams: 150 }, { label: "整包 1kg", grams: 1000 }], default_portion: "1 个约 75g", confidence: "high" }
 ];
 
-/* ── 已退役的个人食物（2026-09-06 周报）───────────────────
-   这些条目在手机的 localStorage 里，页面不会替你删——只是不再让它们
-   出现在搜索和快速记录里，并在食物库页单独列出原因，删不删你自己定。
-   已经记进流水的条目不受影响：流水里的营养值是当时写死的，不回查食物库。
-   key = 个人食物 id；by = 取代它的正式条目 id（null 表示单纯数据有误）。 */
-var UF_RETIRED = {
-  "uf-mtizzqpo": { by: "on-whey-strawberry",        why: "已转成正式条目" },
-  "uf-mtkfdrx5": { by: "grahams-cottage-cheese",    why: "已转成正式条目" },
-  "uf-mtojka7b": { by: "grahams-jersey-whole-milk", why: "已转成正式条目" },
-  "uf-mtojgob8": { by: "tesco-plums-suntrail",      why: "已转成正式条目" },
-  "uf-mtldygj5": { by: "tesco-beef-quarter-pounder", why: "与正式条目重复，数值一模一样" },
-  "uf-mtizxzcd": { by: null, why: "每 100 克的蛋白写成了一勺（30g）的 24g，数值错误" },
-  "uf-mtojhvad": { by: null, why: "标 107 kcal/100g，按蛋白脂肪碳水只算得出 80，差 25%，建议重拍标签" },
-  "uf-mtojjb9f": { by: null, why: "入库时整包热量就没通过交叉验证，建议重拍标签" }
+/* ── 个人食物的就地修正（2026-09-12 起没有「已停用」一栏了）──────
+   手机 localStorage 里的原条目一律不动，这里只改页面显示出来的样子。
+   已经记进流水的条目也不受影响：流水里的营养值是当时写死的，不回查食物库。
+
+   UF_SAME_AS：和某个正式条目其实是同一样东西（同一罐蛋白粉扫了两遍之类）。
+     食物库和搜索里只留正式那一条，历史常用度并到它身上；旧流水仍查得到来源。
+   UF_FIX：名字或数值有错的，在这里改对，条目照常留在食物库里能用。
+     why 会显示在「选份量」面板底部，方便对着标签复核。 */
+var UF_SAME_AS = {
+  "uf-mtizzqpo": "on-whey-strawberry",          /* 草莓乳清蛋白粉：标签实读那次 */
+  "uf-mtizxzcd": "on-whey-strawberry",          /* 同一罐的第一次识别，数值是估的 */
+  "uf-mtkfdrx5": "grahams-cottage-cheese",
+  "uf-mtojka7b": "grahams-jersey-whole-milk",
+  "uf-mtojgob8": "tesco-plums-suntrail",
+  "uf-mtldygj5": "tesco-beef-quarter-pounder"
+};
+var UF_FIX = {
+  "uf-mtizeexx": { name: "Grissini 意式细面包棒",
+    why: "入库时名字里留着提示词模板的「品牌+」，已改；每 100 克的四个数没动。" },
+  "uf-mtojl53j": { name: "Tesco 鸡肉提卡烤串（Firepit）",
+    why: "入库时名字被截断成「(Chicken Tikka Si」，已改；每 100 克的四个数没动。" },
+  "uf-mtojhvad": { name: "Tesco 甜玉米棒",
+    why: "标签的 107 kcal 和碳蛋脂算出来的 80 差 25%。保留标签值（按它记不会少算热量），" +
+         "但碳水那一栏大概读低了——下次买到重拍一遍标签。" },
+  "uf-mtojjb9f": { name: "Eastman's 提卡鸡肉切片",
+    portions: [{ label: "整包 240 g", grams: 240 }, { label: "1 份约 60 g", grams: 60 }],
+    default_portion: "整包 240 g",
+    note: "AI 识别：能量和营养成分均为标签实读值。",   /* 原注记末尾那条整包警告已在下面解释清楚，不再重复显示 */
+    why: "每 100 克四个数自己对得上（碳蛋脂算 123，标签写 124），数值可用。当初报警的是整包那栏：" +
+         "标签上的 74 kcal 是每份约 60 克、不是整包，已把这个份量补成选项。" }
 };
 
 /* ── 存储（键名一经发布不得更改，设计 §4.6）──────────────── */
@@ -627,9 +643,22 @@ function modelSelHtml(id, inId, opts, current) {
 }
 var USER_FOODS = loadArr(UF_KEY);
 function aiReady() { return !!(AI.key && AI.key.length > 8); }
-function allFoodsRaw() { return FOOD_LIBRARY.concat(USER_FOODS); }
-/* 搜索、快速记录、食物库正表都用这个：退役条目不再出现 */
-function allFoods() { return allFoodsRaw().filter(function (f) { return !UF_RETIRED[f.id]; }); }
+/* 个人食物一律经这里取用：UF_FIX 的修正就地盖上去，localStorage 里的原条目不动 */
+function ufView(f) {
+  var fx = UF_FIX[f.id], o = {
+    id: f.id, name: f.name, per_100g: f.per_100g, portions: f.portions,
+    default_portion: f.default_portion, confidence: f.confidence, note: f.note, added: f.added
+  };
+  if (fx) {
+    for (var k in fx) if (fx.hasOwnProperty(k) && k !== "why") o[k] = fx[k];
+    o.fix_why = fx.why;
+  }
+  if (o.note) o.note = String(o.note).replace(/^(AI 识别：)+/, "AI 识别：");  /* 老条目前缀加了两遍 */
+  return o;
+}
+function allFoodsRaw() { return FOOD_LIBRARY.concat(USER_FOODS.map(ufView)); }
+/* 搜索、快速记录、食物库都用这个：与正式条目重复的个人条目只留正式那一条 */
+function allFoods() { return allFoodsRaw().filter(function (f) { return !UF_SAME_AS[f.id]; }); }
 
 function saveAiKey() {
   var inp = document.getElementById("ai-key-in");
@@ -768,9 +797,12 @@ function aiParseFood(txt) {
            pack_grams: optNum(o.pack_grams, 1, 5000), pack_kcal: optNum(o.pack_kcal, 1, 10000) };
 }
 function aiAddFood(spec) {
+  /* finishAddFood 已经加过前缀，这里别再加一遍 */
+  var nt = String(spec.note || "");
+  if (nt.indexOf("AI 识别：") !== 0) nt = "AI 识别：" + nt;
   var f = { id: "uf-" + Date.now().toString(36), name: spec.name, per_100g: spec.per_100g,
             portions: spec.portions, default_portion: spec.default_portion,
-            confidence: "low", note: "AI 识别：" + spec.note, added: todayStr() };
+            confidence: "low", note: nt.slice(0, 300), added: todayStr() };
   USER_FOODS.push(f);
   persist(UF_KEY, USER_FOODS);
   openPortionSheet(f.id, null);
@@ -1009,6 +1041,8 @@ function openPortionSheet(foodId, replaceId) {
       '<input id="in-grams" type="number" inputmode="decimal" min="1" max="' + MAX_G + '" placeholder="g"></div>' +
       '<div class="note" id="grams-preview" style="display:none"></div>' +
       '<button class="btn solid" id="btn-grams" data-act="confirm-grams" style="display:none">按克数记录</button>' +
+      (f.fix_why ? '<div class="note">✎ 已修正：' + esc(f.fix_why) + '</div>' : '') +
+      (f.note ? '<div class="note">' + esc(f.note) + '</div>' : '') +
       (replaceId ? '<button class="btn danger" data-act="delete-entry">删除这条记录</button>' : '') +
     '</div>');
   var gi = document.getElementById("in-grams");
@@ -1227,23 +1261,62 @@ function clearSearch() {
   elSearch.blur();
   elClear.style.display = "none";
 }
-function chipCandidates() {
-  var slot = mealOf(nowTs());
-  var score = {};
+/* ── 「最近吃的排前面」──────────────────────────────────────
+   食物库、搜索结果、快速记录共用这一套：
+   last  = 每样东西最后一次记录的时间，用来排序和显示「3 天前」；
+   score = 快速记录用的常吃度，近 7 天的一次约等于 30 天前的三次，
+           再给同一餐段（早/午/晚/夜宵）吃过的加权。 */
+function daysBetween(fromDate, toDate) {
+  return Math.round((new Date(toDate + "T12:00") - new Date(fromDate + "T12:00")) / 86400000);
+}
+function agoLabel(ts) {
+  var d = daysBetween(ts.slice(0, 10), todayStr());
+  if (d <= 0) return "今天";
+  if (d === 1) return "昨天";
+  if (d < 14) return d + " 天前";
+  return ts.slice(5, 7) + "/" + ts.slice(8, 10);
+}
+function usageStats() {
+  var slot = mealOf(nowTs()), today = todayStr(), last = {}, score = {};
   DB.log.forEach(function (e) {
-    if (!e.food_id) return;
-    /* 转正换了 id，历史常用度要跟着过去，否则蛋白粉这种天天记的会掉出快速记录 */
-    var r = UF_RETIRED[e.food_id];
-    var key = (r && r.by) ? r.by : e.food_id;
-    score[key] = (score[key] || 0) + 1 + (mealOf(e.ts) === slot ? 2 : 0);
+    if (!e.food_id || !e.ts) return;
+    /* 重复/转正的条目，历史都并到留下的那一条上，否则蛋白粉这种天天记的会掉出快速记录 */
+    var key = UF_SAME_AS[e.food_id] || e.food_id;
+    if (!last[key] || e.ts > last[key]) last[key] = e.ts;
+    var d = daysBetween(e.ts.slice(0, 10), today);
+    var w = d <= 6 ? 3 : (d <= 13 ? 2 : (d <= 29 ? 1 : 0.4));
+    if (mealOf(e.ts) === slot) w *= 1.6;
+    score[key] = (score[key] || 0) + w;
   });
-  var all = allFoods();
-  var lib = all.slice();
+  return { last: last, score: score };
+}
+/* 入库顺序：自己拍的在前（按入库日期），库里的在后（按加入顺序），都是新的在上 */
+function addedCmp() {
+  var idx = {};
+  FOOD_LIBRARY.forEach(function (f, i) { idx[f.id] = i; });
+  return function (a, b) {
+    var pa = a.added ? 0 : 1, pb = b.added ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    if (a.added && b.added && a.added !== b.added) return a.added < b.added ? 1 : -1;
+    return (idx[b.id] == null ? -1 : idx[b.id]) - (idx[a.id] == null ? -1 : idx[a.id]);
+  };
+}
+/* 吃过的按最后一次记录倒序排前面，没吃过的按入库顺序跟在后面 */
+function recentCmp(u) {
+  var by = addedCmp();
+  return function (a, b) {
+    var la = u.last[a.id] || "", lb = u.last[b.id] || "";
+    if (la !== lb) return la < lb ? 1 : -1;
+    return by(a, b);
+  };
+}
+function chipCandidates(n) {
+  var u = usageStats(), cmp = recentCmp(u), lib = allFoods();
   lib.sort(function (a, b) {
-    var d = (score[b.id] || 0) - (score[a.id] || 0);
-    return d !== 0 ? d : all.indexOf(a) - all.indexOf(b);
+    var d = (u.score[b.id] || 0) - (u.score[a.id] || 0);
+    return d !== 0 ? d : cmp(a, b);
   });
-  return lib.slice(0, 6);
+  return lib.slice(0, n || 6);
 }
 function bannerDismissedToday(kind) {
   var d = DB.settings.banner_dismiss || {};
@@ -1391,6 +1464,7 @@ function renderQuickBody() {
   if (searchQuery) {
     var q = searchQuery.toLowerCase();
     var hits = allFoods().filter(function (f) { return f.name.toLowerCase().indexOf(q) >= 0 || f.id.indexOf(q) >= 0; });
+    hits.sort(recentCmp(usageStats()));   /* 最近吃过的排最上面 */
     h += '<div class="results">';
     hits.forEach(function (f) {
       var dp = f.portions.find(function (p) { return p.label === f.default_portion; }) || f.portions[0];
@@ -1404,12 +1478,12 @@ function renderQuickBody() {
     h += '<div class="chips">' + COMBOS.map(function (c) {
       return '<button class="chip combo" data-act="quick-combo" data-combo="' + c.id + '">☆ ' + esc(c.name) +
         ' <span class="kc">' + comboKcal(c) + '</span></button>';
-    }).join("") + chipCandidates().map(function (f) {
+    }).join("") + chipCandidates(8).map(function (f) {
       var dp = f.portions.find(function (p) { return p.label === f.default_portion; }) || f.portions[0];
       return '<button class="chip" data-act="quick-log" data-food="' + f.id + '">' + esc(f.name) +
         ' <span class="kc">' + kcalOf(f, dp.grams) + '</span></button>';
     }).join("") + '</div>' +
-    '<div class="hint" style="padding-top:2px">点一下按常用份量记录，可撤销/改份量；☆ 是组合，一键记几样。搜索可挑份量或输克数。</div>';
+    '<div class="hint" style="padding-top:2px">按最近吃得多的排，点一下就按常用份量记一条，可撤销/改份量；☆ 是组合，一键记几样。搜索可挑份量或输克数。</div>';
   }
   el.innerHTML = h;
 }
@@ -1671,41 +1745,52 @@ function saveWeight() {
   renderWeight();
 }
 
-/* ── 食物库页 ───────────────────────────────────────────── */
+/* ── 食物库页 ───────────────────────────────────────────────
+   排序 = 最近吃过的在最上面（带「今天 / 3 天前」），其余按入库时间倒序。
+   「最近吃过」最多列 LIB_RECENT_MAX 条，排不上的照常出现在下面两栏里。 */
+var LIB_RECENT_MAX = 20;
 var libQuery = "";
 var elLib = document.getElementById("in-lib");
 var libComposing = false;
 function renderLibrary() {
   var el = document.getElementById("lib-body");
   var q = libQuery.toLowerCase();
-  function row(f) {
+  function match(f) { return !q || f.name.toLowerCase().indexOf(q) >= 0; }
+  function row(f, ago) {
     return '<button class="r-item" data-act="open-food" data-food="' + f.id + '">' +
       '<span class="nm"><i class="dot ' + (f.confidence === "high" ? "hi" : "lo") + '"></i><span>' + esc(f.name) + '</span></span>' +
-      '<span class="kc">' + f.per_100g.kcal + ' /100g</span></button>';
+      '<span class="kc">' + (ago ? esc(ago) + ' · ' : '') + f.per_100g.kcal + ' /100g</span></button>';
   }
-  function match(f) { return !q || f.name.toLowerCase().indexOf(q) >= 0; }
-  var h = FOOD_LIBRARY.filter(match).map(row).join("");
-  var mine = USER_FOODS.filter(function (f) { return match(f) && !UF_RETIRED[f.id]; });
-  var retired = USER_FOODS.filter(function (f) { return match(f) && UF_RETIRED[f.id]; });
-  function delRow(f) {
-    return '<div class="uf-row">' + row(f) +
+  var mineIds = {};
+  USER_FOODS.forEach(function (f) { mineIds[f.id] = 1; });
+  /* 个人食物带删除按钮：删的是手机上的条目，已记进流水的不受影响 */
+  function line(f, ago) {
+    if (!mineIds[f.id]) return row(f, ago);
+    return '<div class="uf-row">' + row(f, ago) +
       '<button class="uf-del" data-act="del-userfood" data-food="' + f.id + '">删除</button></div>';
   }
-  if (mine.length) {
-    h += '<div class="mod-title" style="padding:12px 0 4px">我的食物（手机上 AI 入库）</div>' +
-      mine.map(delRow).join("");
+  var u = usageStats();
+  var list = allFoods().filter(match);
+  var eaten = list.filter(function (f) { return u.last[f.id]; }).sort(recentCmp(u)).slice(0, LIB_RECENT_MAX);
+  var top = {};
+  eaten.forEach(function (f) { top[f.id] = 1; });
+  /* 「最近吃过」之外的一律按入库顺序，新的在上；吃过的仍带上次记录的日期 */
+  var rest = list.filter(function (f) { return !top[f.id]; }).sort(addedCmp());
+  function ago(f) { return u.last[f.id] ? agoLabel(u.last[f.id]) : null; }
+  var mine = rest.filter(function (f) { return mineIds[f.id]; });
+  var lib = rest.filter(function (f) { return !mineIds[f.id]; });
+  var h = "";
+  if (eaten.length) {
+    h += '<div class="mod-title" style="padding:2px 0 4px">最近吃过</div>' +
+      eaten.map(function (f) { return line(f, agoLabel(u.last[f.id])); }).join("");
   }
-  if (retired.length) {
-    h += '<div class="mod-title" style="padding:14px 0 4px">已停用（周报核对后）</div>' +
-      '<div class="hint" style="padding-bottom:6px">下面这些不再出现在搜索和快速记录里，' +
-      '已经记过的流水不受影响。删不删随你，留着也没有副作用。</div>' +
-      retired.map(function (f) {
-        var r = UF_RETIRED[f.id];
-        var to = r.by ? foodById(r.by) : null;
-        return delRow(f) +
-          '<div class="hint" style="padding:2px 0 8px">' + esc(r.why) +
-          (to ? '，改用「' + esc(to.name) + '」' : '') + '</div>';
-      }).join("");
+  if (mine.length) {
+    h += '<div class="mod-title" style="padding:14px 0 4px">我的食物（手机上 AI 入库）</div>' +
+      mine.map(function (f) { return line(f, ago(f)); }).join("");
+  }
+  if (lib.length) {
+    h += '<div class="mod-title" style="padding:14px 0 4px">食物库</div>' +
+      lib.map(function (f) { return row(f, ago(f)); }).join("");
   }
   el.innerHTML = h || '<div class="empty">没有匹配的食物。</div>';
 }
