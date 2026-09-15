@@ -122,7 +122,9 @@
   .trow .tv { font-family: var(--f-num); font-variant-numeric: tabular-nums; font-size: 12px; flex: none; min-width: 74px; text-align: right; }
   .hint { font-size: 11.5px; color: var(--text-faint); line-height: 1.5; }
   .bar.thin { height: 4px; border-radius: 2px; }
-  .hrow { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--hair); }
+  .hrow { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--hair); width: 100%; }
+  .hrow.sel { background: var(--brass-bg); margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: 8px; border-bottom-color: transparent; }
+  .hrow .hgo { flex: none; font-size: 13px; color: var(--text-faint); }
   .hrow:last-of-type { border-bottom: none; }
   .hrow .hl { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; }
   .hrow .hd { font-family: var(--f-num); color: var(--text-dim); flex: none; }
@@ -157,6 +159,7 @@
     font-family: var(--f-label); font-size: 13px; font-weight: 700; color: var(--brass);
   }
   .nudge.alarm { border-color: var(--over); color: var(--over); background: none; }
+  .nudge.past { border-color: var(--brass); background: var(--brass); color: var(--card); }
   .nudge .x { font-size: 15px; padding: 0 3px; opacity: .7; flex: none; }
 
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -401,8 +404,8 @@
    另：减脂终点「78 kg」应按晨重计——同日晨重与其他时段差 0.5–1.0 kg
    （首周均值 0.7），不统一口径终点会偏掉近一公斤。 */
 var BUILD = {
-  version: "1.11.0",
-  built: "2026-09-12",
+  version: "1.12.0",
+  built: "2026-09-16",
   kcal_target: 1900,     // 减脂目标：晨重 82.5kg → 78kg，每周约 −0.4~0.5kg
   tdee: 2300,            // 校准常数，随周报更新；不是当日实测消耗
   protein_target: 150,
@@ -584,7 +587,7 @@ function trainingOn(date) {
   for (var i = 0; i < DB.training.length; i++) if (DB.training[i].date === date) return DB.training[i];
   return null;
 }
-function trainingToday() { return trainingOn(todayStr()); }
+function trainingOfView() { return trainingOn(viewDate); }   /* 在看哪天就改哪天的训练 */
 function trainingMin(rec, type) {
   if (rec && rec.mins && rec.mins[type] > 0) return rec.mins[type];
   var p = presetOf(type);
@@ -595,8 +598,8 @@ function trainingKcal(rec, type) {
   return p ? Math.round(trainingMin(rec, type) * p.rate) : 0;
 }
 function toggleTraining(type) {
-  var rec = trainingToday();
-  if (!rec) { rec = { date: todayStr(), types: [], mins: {} }; DB.training.push(rec); }
+  var rec = trainingOfView();
+  if (!rec) { rec = { date: viewDate, types: [], mins: {} }; DB.training.push(rec); }
   if (!rec.mins) rec.mins = {};
   var i = rec.types.indexOf(type);
   if (i >= 0) { rec.types.splice(i, 1); }
@@ -604,7 +607,7 @@ function toggleTraining(type) {
   persist(K.training, DB.training);
 }
 function setTrainingMin(type, m) {
-  var rec = trainingToday();
+  var rec = trainingOfView();
   if (!rec) return;
   if (!rec.mins) rec.mins = {};
   rec.mins[type] = m;
@@ -970,9 +973,33 @@ function mealOf(ts) {
   return "夜宵";
 }
 var MEAL_ORDER = ["早餐", "午餐", "晚餐", "夜宵"];
-function entriesToday() {
-  var t = todayStr();
-  return DB.log.filter(function (e) { return e.ts && e.ts.slice(0, 10) === t; });
+/* ── 在看哪一天 ─────────────────────────────────────────────
+   跨过午夜才想起昨天没点「记全」，得能翻回去改。viewDate 不是今天时：
+   页面顶部常驻一条醒目提示，「今日」页的记录/训练/记全全部落在 viewDate 上；
+   翻日、或离开超过 REVERT_MIN 分钟再回来，自动跳回今天，
+   免得在旧日期上把今天的饭记进去。 */
+var viewDate = todayStr();
+var REVERT_MIN = 10;
+function viewingToday() { return viewDate === todayStr(); }
+function setViewDate(d) {
+  viewDate = d;
+  renderToday();
+  syncTopbar();
+  window.scrollTo(0, 0);
+}
+function entriesOn(date) {
+  return DB.log.filter(function (e) { return e.ts && e.ts.slice(0, 10) === date; });
+}
+function entriesOfView() { return entriesOn(viewDate); }
+var WD_CN = ["日", "一", "二", "三", "四", "五", "六"];
+function weekdayOf(date) { return "周" + WD_CN[new Date(date + "T12:00").getDay()]; }
+function dayLabel(date) { return date.slice(5).replace("-", "/") + " " + weekdayOf(date); }
+/* 补记到过去某天：时刻用当前钟点（0:10 补昨天的宵夜，正好落在「夜宵」那一栏） */
+function entryTs() { return viewingToday() ? nowTs() : viewDate + nowTs().slice(10); }
+function syncTopbar() {
+  var past = activeTab() === "today" && !viewingToday();
+  document.getElementById("tb-title").textContent = past ? dayLabel(viewDate) : TITLES[activeTab()];
+  document.getElementById("tb-date").textContent = past ? "今天是 " + todayStr().slice(5) : todayStr();
 }
 function dayComplete(date) {
   for (var i = 0; i < DB.days.length; i++) if (DB.days[i].date === date) return !!DB.days[i].complete;
@@ -1082,7 +1109,7 @@ var flashId = null;
 function buildEntry(f, portionLabel, grams) {
   return {
     id: newId(),
-    ts: nowTs(), food_id: f.id, name: f.name, portion: portionLabel,
+    ts: entryTs(), food_id: f.id, name: f.name, portion: portionLabel,
     grams: grams, kcal: kcalOf(f, grams), protein: protOf(f, grams),
     fat: Math.round(f.per_100g.fat * grams / 100 * 10) / 10,
     carb: Math.round(f.per_100g.carb * grams / 100 * 10) / 10,
@@ -1172,7 +1199,7 @@ function confirmGuess(editId) {
   } else {
     var entry = {
       id: newId(),
-      ts: nowTs(), food_id: null, name_raw: name, grams: null,
+      ts: entryTs(), food_id: null, name_raw: name, grams: null,
       kcal: kcal, protein: null, confidence: "guess", pending: true,
       amount_note: guessAmount
     };
@@ -1352,12 +1379,23 @@ function renderBanner() {
   var hour = new Date().getHours();
   var t = todayStr();
   var html = "";
+  if (!viewingToday()) {
+    /* 模式提示：这天的记录、训练、记全都改的是 viewDate，别记串了 */
+    html = '<button class="nudge past" data-act="back-today">正在看 ' + dayLabel(viewDate) +
+      '（不是今天）<span>回到今天 →</span></button>';
+    if (storeBroken) {
+      html = '<button class="nudge alarm" data-act="go-export">⚠️ 数据存储异常——请立即导出备份<span>去导出 →</span></button>' + html;
+    }
+    el.innerHTML = html;
+    el.style.display = "";
+    return;
+  }
   if (storeBroken) {
     html = '<button class="nudge alarm" data-act="go-export">⚠️ 数据存储异常——请立即导出备份<span>去导出 →</span></button>';
   } else if (hour < 11 && !DB.weight.some(function (w) { return w.date === t; }) && !bannerDismissedToday("weight")) {
     html = '<button class="nudge" data-act="go-weight">今晨体重还没记<span style="display:flex;gap:8px;align-items:center">去记 →<span class="x" data-act="dismiss-banner" data-kind="weight">✕</span></span></button>';
   } else if (hour >= 20 && !dayComplete(t) && !bannerDismissedToday("evening")) {
-    var msg = entriesToday().length ? "睡前确认：记全了就打开下面的开关" : "今天还没记任何一餐";
+    var msg = entriesOn(t).length ? "睡前确认：记全了就打开下面的开关" : "今天还没记任何一餐";
     html = '<button class="nudge" data-act="go-complete">' + msg + '<span class="x" data-act="dismiss-banner" data-kind="evening">✕</span></button>';
   } else {
     var ds = daysSinceExport();
@@ -1422,12 +1460,13 @@ function renderWeekMod(today) {
 }
 function renderTodayTop() {
   var el = document.getElementById("today-top");
-  var intake = dayTotals(entriesToday()).intake;
+  var intake = dayTotals(entriesOfView()).intake;
   var flash = flashId ? " flash" : "";
+  var dayW = viewingToday() ? "今日" : viewDate.slice(5).replace("-", "/") + " ";   /* 日期后面留个空格：「09/13 流水」 */
 
   var h = "";
   if (BUILD.kcal_target == null) {
-    h += '<div class="mod"><div class="mod-title">今日已摄入</div>' +
+    h += '<div class="mod"><div class="mod-title">' + dayW + '已摄入</div>' +
       '<div class="figure"><span class="n' + (intake === 0 ? " zero" : flash) + '">' + intake + '</span><span class="u">kcal</span></div>' +
       '<div class="verdict">目标尚未设定：先如实记录、按平时吃法吃。攒满一周完整记录并导出后，周报会把每日目标定出来。</div></div>';
   } else {
@@ -1435,7 +1474,7 @@ function renderTodayTop() {
     var pct = Math.min(100, Math.round(intake / BUILD.kcal_target * 100));
     var overCls = remain < 0 ? " over" : flash;
     var fill = remain < 0 ? "fill-over" : "fill-brass";
-    h += '<div class="mod"><div class="mod-title">' + (remain < 0 ? "今日超出" : "今日剩余") + '</div>' +
+    h += '<div class="mod"><div class="mod-title">' + dayW + (remain < 0 ? "超出" : "剩余") + '</div>' +
       '<div class="figure"><span class="n' + overCls + '">' + Math.abs(remain) + '</span><span class="u">kcal</span></div>' +
       '<div class="bar"><i class="' + fill + '" style="width:' + pct + '%"></i></div>' +
       '<div class="split3">' +
@@ -1444,7 +1483,7 @@ function renderTodayTop() {
         '<div><span class="k">基准消耗*</span><span class="v">' + (BUILD.tdee == null ? "—" : BUILD.tdee) + '</span></div>' +
       '</div>' +
       '<div class="verdict">' + (BUILD.tdee == null ? "*基准消耗待校准。" :
-        "若每天都像今天，约 <b>" + (intake <= BUILD.tdee ? "−" : "+") +
+        "若每天都像" + (viewingToday() ? "今天" : "这天") + "，约 <b>" + (intake <= BUILD.tdee ? "−" : "+") +
         (Math.round(Math.abs(BUILD.tdee - intake) * 7 / 7700 * 100) / 100) + " kg/周</b>。*基准消耗是校准出的常数，不是当日实测。") +
       '</div></div>';
   }
@@ -1511,8 +1550,9 @@ function renderQuickBody() {
 }
 function renderTodayBottom() {
   var el = document.getElementById("today-bottom");
-  var t = todayStr();
-  var entries = entriesToday();
+  var t = viewDate;
+  var dayW = viewingToday() ? "今日" : viewDate.slice(5).replace("-", "/") + " ";   /* 日期后面留个空格：「09/13 流水」 */
+  var entries = entriesOfView();
   var tot = dayTotals(entries);
   var h = "";
   function macroRow(label, val, target, goodFill) {
@@ -1531,10 +1571,10 @@ function renderTodayBottom() {
     '<div class="hint" style="margin-top:6px">上限由每日 ' + BUILD.kcal_target + ' kcal 拆分：蛋白优先、脂肪约三成、其余碳水。' +
     (tot.hasGuess ? '「估」条目只计热量。' : '') + '</div></div>';
 
-  var tr = trainingToday();
+  var tr = trainingOfView();
   var sel = tr ? tr.types : [];
   var estK = 0, estM = 0;
-  h += '<div class="mod"><div class="mod-title">今日训练</div><div class="tchips">';
+  h += '<div class="mod"><div class="mod-title">' + dayW + '训练</div><div class="tchips">';
   TRAINING_PRESETS.forEach(function (p) {
     var on = sel.indexOf(p.type) >= 0;
     if (on) { estK += trainingKcal(tr, p.type); estM += trainingMin(tr, p.type); }
@@ -1553,9 +1593,10 @@ function renderTodayBottom() {
   }
   h += '<div class="hint" style="margin-top:6px">拖动改时长；消耗按你手表实测均值折算，只作记录、不计入额度。</div></div>';
 
-  h += '<div class="mod"><div class="mod-title">今日流水</div>';
+  h += '<div class="mod"><div class="mod-title">' + dayW + '流水</div>';
   if (!entries.length) {
-    h += '<div class="empty">还没有记录。点上面的食物，一下就记完一条。</div>';
+    h += '<div class="empty">' + (viewingToday() ? "还没有记录。点上面的食物，一下就记完一条。" :
+      "这天没有记录。照样可以点上面的食物补记，时间按现在的钟点算在这一天。") + '</div>';
   } else {
     h += '<div class="ledger">';
     MEAL_ORDER.forEach(function (meal) {
@@ -1578,11 +1619,12 @@ function renderTodayBottom() {
   }
   h += '</div>';
   var comp = dayComplete(t);
-  h += '<div class="mod" id="complete-mod"><div class="switchrow"><div><div class="k">今天记全了</div>' +
+  var compLabel = (viewingToday() ? "今天" : dayLabel(t)) + "记全了";
+  h += '<div class="mod" id="complete-mod"><div class="switchrow"><div><div class="k">' + compLabel + '</div>' +
     '<div class="hint">只有打开此开关的天才进入消耗量的计算</div></div>' +
-    '<button class="sw" role="switch" aria-checked="' + comp + '" data-act="toggle-complete" aria-label="今天记全了"></button>' +
+    '<button class="sw" role="switch" aria-checked="' + comp + '" data-act="toggle-complete" aria-label="' + compLabel + '"></button>' +
     '</div></div>';
-  h += renderHistoryMod(t);
+  h += renderHistoryMod(todayStr());
   el.innerHTML = h;
 }
 /* 过去 7/14 天概览：摄入 vs 目标（细条）、晨重、碳蛋脂、训练、是否记全 */
@@ -1596,35 +1638,43 @@ function renderHistoryMod(today) {
     r.kcal += e.kcal || 0; r.prot += e.protein || 0;
     r.carb += e.carb || 0; r.fat += e.fat || 0;
   });
-  DB.training.forEach(function (r) {
-    if (r.date !== today && r.types && r.types.length && !byDay[r.date]) byDay[r.date] = { kcal: 0, prot: 0, carb: 0, fat: 0 };
-  });
-  var all = Object.keys(byDay).sort().reverse();
-  var dates = all.slice(0, histExpanded ? 14 : 7);
-  var h = '<div class="mod"><div class="mod-title">过去 ' + (histExpanded ? 14 : 7) + ' 天</div>';
-  if (!dates.length) {
-    return h + '<div class="hint">记录攒起来后，这里按天显示摄入、体重和训练。</div></div>';
+  /* 按日历天列，没记录的那天也列出来——漏记一整天才更需要点进去补 */
+  var first = null;
+  DB.log.forEach(function (e) { var d = (e.ts || "").slice(0, 10); if (d && (!first || d < first)) first = d; });
+  DB.training.forEach(function (r) { if (r.date && (!first || r.date < first)) first = r.date; });
+  var n = histExpanded ? 14 : 7;
+  var dates = [];
+  for (var i = 1; i <= n; i++) {
+    var d = dateShift(today, -i);
+    if (first && d < first) break;
+    dates.push(d);
   }
-  var WD = ["日", "一", "二", "三", "四", "五", "六"];
+  var h = '<div class="mod"><div class="mod-title">过去 ' + n + ' 天</div>';
+  if (!dates.length) {
+    return h + '<div class="hint">记录攒起来后，这里按天显示摄入、体重和训练，点一行能翻回那天改。</div></div>';
+  }
   var TN = { strength: "力", incline: "坡", stairs: "梯" };
   var mwByDate = {};
   DB.weight.forEach(function (w) { if (w.context === "morning") mwByDate[w.date] = w.kg; });
   dates.forEach(function (d) {
-    var r = byDay[d];
-    var wd = WD[new Date(d + "T12:00").getDay()];
+    var r = byDay[d] || { kcal: 0, prot: 0, carb: 0, fat: 0 };
+    var empty = !byDay[d];
     var tr = trainingOn(d);
     var icons = (tr && tr.types ? tr.types.map(function (x) { return TN[x] || ""; }).join("") : "");
     var over = BUILD.kcal_target != null && r.kcal > BUILD.kcal_target;
     var pct = BUILD.kcal_target ? Math.min(100, Math.round(r.kcal / BUILD.kcal_target * 100)) : 0;
-    h += '<div class="hrow">' +
-      '<div class="hl"><span class="hd">' + d.slice(5) + ' ' + wd + '</span>' +
+    h += '<button class="hrow' + (d === viewDate ? " sel" : "") + '" data-act="view-day" data-date="' + d + '">' +
+      '<div class="hl"><span class="hd">' + d.slice(5) + ' ' + weekdayOf(d).slice(1) + '</span>' +
         '<span class="hk' + (over ? " over" : "") + '">' + Math.round(r.kcal) + '</span>' +
         '<span class="hw">' + (mwByDate[d] != null ? mwByDate[d].toFixed(1) + ' kg' : '') + '</span>' +
-        '<span class="hi">' + (icons ? "练:" + icons : "") + (dayComplete(d) ? " ✓" : "") + '</span></div>' +
+        '<span class="hi">' + (icons ? "练:" + icons : "") + (dayComplete(d) ? " ✓" : "") + '</span>' +
+        '<span class="hgo">›</span></div>' +
       '<div class="bar thin"><i class="' + (over ? "fill-over" : "fill-brass") + '" style="width:' + pct + '%"></i></div>' +
-      '<div class="hm">蛋 ' + Math.round(r.prot) + ' · 碳 ' + Math.round(r.carb) + ' · 脂 ' + Math.round(r.fat) + '</div></div>';
+      '<div class="hm">' + (empty ? '这天没有记录' :
+        '蛋 ' + Math.round(r.prot) + ' · 碳 ' + Math.round(r.carb) + ' · 脂 ' + Math.round(r.fat)) + '</div></button>';
   });
-  if (all.length > 7) {
+  h += '<div class="hint" style="padding-top:8px">点一行翻回那天：可以补记、改记录、补打「记全了」。</div>';
+  if (!first || dateShift(today, -8) >= first) {
     h += '<button class="r-guess" data-act="hist-toggle">' + (histExpanded ? "只看 7 天" : "显示 14 天") + '</button>';
   }
   return h + '</div>';
@@ -1635,6 +1685,7 @@ function renderToday() {
   renderQuickBody();
   renderAiMod();
   renderTodayBottom();
+  syncTopbar();
   flashId = null;
 }
 /* 搜索：输入框常驻不重建，避免打断 iOS 中文输入法的组字过程 */
@@ -1901,6 +1952,7 @@ function switchTab(tab) {
   });
   document.getElementById("tb-title").textContent = TITLES[tab];
   VIEWS[tab]();
+  syncTopbar();
 }
 document.querySelector(".tabs").addEventListener("click", function (ev) {
   var b = ev.target.closest("button[data-tab]");
@@ -1976,8 +2028,10 @@ document.addEventListener("click", function (ev) {
     if (b.getAttribute("data-armed")) { deleteEntry(replaceId); }
     else { b.setAttribute("data-armed", "1"); b.textContent = "确认删除？"; }
   }
+  else if (act === "view-day") { setViewDate(b.getAttribute("data-date")); }
+  else if (act === "back-today") { setViewDate(todayStr()); }
   else if (act === "toggle-complete") {
-    var t = todayStr();
+    var t = viewDate;
     setDayComplete(t, !dayComplete(t));
     renderBanner();
     renderTodayBottom();
@@ -2038,7 +2092,7 @@ document.addEventListener("click", function (ev) {
     var madeM = [];
     mItems.forEach(function (it) {
       var en = {
-        id: newId(), ts: nowTs(), food_id: null, name_raw: it.name,
+        id: newId(), ts: entryTs(), food_id: null, name_raw: it.name,
         portion: Math.round(it.grams) + " g", grams: Math.round(it.grams),
         kcal: mealItemKcal(it),
         protein: Math.round(it.per_100g.protein * it.grams / 100 * 10) / 10,
@@ -2102,7 +2156,7 @@ document.addEventListener("input", function (ev) {
   var p = presetOf(type);
   var tv = document.getElementById("tv-" + type);
   if (tv && p) tv.textContent = m + "分·" + Math.round(m * p.rate);
-  var rec = trainingToday();
+  var rec = trainingOfView();
   var estK = 0, estM = 0;
   if (rec) rec.types.forEach(function (t) { estK += trainingKcal(rec, t); estM += trainingMin(rec, t); });
   var te = document.getElementById("t-est");
@@ -2119,6 +2173,7 @@ document.addEventListener("change", function (ev) {
 
 /* ── 启动与刷新 ─────────────────────────────────────────── */
 var shownDate = todayStr();
+viewDate = shownDate;           /* 每次打开都从今天开始看 */
 document.getElementById("tb-date").textContent = shownDate;
 switchTab("today");
 
@@ -2127,6 +2182,7 @@ function refreshIfNeeded(force) {
   var dateChanged = t !== shownDate;
   if (dateChanged) {
     shownDate = t;
+    viewDate = t;               /* 跨午夜：回到新的今天，别把今天的饭记进昨天 */
     document.getElementById("tb-date").textContent = t;
   }
   if (dateChanged || force) {
@@ -2137,12 +2193,17 @@ function refreshIfNeeded(force) {
   }
 }
 /* 切回前台：先从存储重读（防旧标签页用过期内存覆盖新记录），再判断要不要重绘 */
+var hiddenAt = 0;
+document.addEventListener("visibilitychange", function () { if (document.hidden) hiddenAt = Date.now(); });
 function onVisible() {
   if (document.hidden) return;
+  /* 翻回过去某天改完就切走了，隔了 REVERT_MIN 分钟再回来当作新的一次使用：跳回今天 */
+  var reverted = false;
+  if (!viewingToday() && hiddenAt && Date.now() - hiddenAt > REVERT_MIN * 60000) { viewDate = todayStr(); reverted = true; }
   var before = JSON.stringify([DB.log.length, DB.weight.length, DB.days.length]);
   if (!storeBroken) reloadDB();
   var after = JSON.stringify([DB.log.length, DB.weight.length, DB.days.length]);
-  refreshIfNeeded(before !== after);
+  refreshIfNeeded(before !== after || reverted);
 }
 document.addEventListener("visibilitychange", onVisible);
 window.addEventListener("pageshow", onVisible);
