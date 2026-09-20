@@ -402,17 +402,25 @@
    反推的日消耗区间 819–4961 kcal，没有信息量。手表近 30 天在英国的 22 天
    总消耗中位数 2262 kcal，与 2300 的差在噪声内。下次校准等积累到 3–4 周晨重。
    另：减脂终点「78 kg」应按晨重计——同日晨重与其他时段差 0.5–1.0 kg
-   （首周均值 0.7），不统一口径终点会偏掉近一公斤。 */
+   （首周均值 0.7），不统一口径终点会偏掉近一公斤。
+
+   2026-09-20 第三次校准，两个数都改了。16 个晨重点、18 天：减重首次达到统计显著
+   （最小二乘 −81 g/天，p=0.033；抗异常点 −94；三周分段 −65），反推日消耗
+   2732 kcal（95% 区间 2212–3252），另外两种算法给 2604 和 2827。
+   三次校准的点估计几乎没动（2890 → 2761 → 2732），区间从 819–4961 收到 2212–3252。
+   tdee 取 2600：往证据方向走但留余量。
+   kcal_target 1900 → 2000（他定的数；分析建议过 2200）：那 18 天他日均吃 2105
+   却正好按计划速度在掉，说明 1900 是照着偏低的 2300 算出来的、本来就定严了。 */
 var BUILD = {
-  version: "1.12.0",
-  built: "2026-09-16",
-  kcal_target: 1900,     // 减脂目标：晨重 82.5kg → 78kg，每周约 −0.4~0.5kg
-  tdee: 2300,            // 校准常数，随周报更新；不是当日实测消耗
+  version: "1.13.0",
+  built: "2026-09-20",
+  kcal_target: 2000,     // 减脂目标：晨重 82.5kg → 78kg，每周约 −0.4~0.5kg
+  tdee: 2600,            // 校准常数，随周报更新；不是当日实测消耗
   protein_target: 150,
-  /* 碳/脂上限由 1900 分解而来：蛋白150g=600kcal + 脂肪60g=540kcal
-     + 碳水190g=760kcal。周报改 kcal_target 时要同步重算这两个数。 */
-  carb_target: 190,
-  fat_target: 60
+  /* 碳/脂上限由 2000 分解而来：蛋白150g=600kcal + 脂肪64g=576kcal
+     + 碳水206g=824kcal，合计正好 2000。周报改 kcal_target 时要同步重算这两个数。 */
+  carb_target: 206,
+  fat_target: 64
 };
 
 /* ── 食物库（权威副本在 OneDrive calorie-tracker/food_library.json，
@@ -487,7 +495,20 @@ var FOOD_LIBRARY = [
   { id: "grahams-jersey-whole-milk", name: "Graham's Jersey 全脂牛奶（比普通全脂高）", per_100g: { kcal: 74, protein: 3.6, fat: 4.8, carb: 4.4 },
     portions: [{ label: "100 g", grams: 100 }, { label: "1 杯 250ml", grams: 250 }, { label: "整瓶 1L", grams: 1000 }], default_portion: "100 g", confidence: "high" },
   { id: "tesco-plums-suntrail", name: "Tesco 李子（Suntrail Farms 熟成，1kg 袋）", per_100g: { kcal: 42, protein: 0.6, fat: 0.1, carb: 8.8 },
-    portions: [{ label: "1 个约 75g", grams: 75 }, { label: "2 个约 150g", grams: 150 }, { label: "整包 1kg", grams: 1000 }], default_portion: "1 个约 75g", confidence: "high" }
+    portions: [{ label: "1 个约 75g", grams: 75 }, { label: "2 个约 150g", grams: 150 }, { label: "整包 1kg", grams: 1000 }], default_portion: "1 个约 75g", confidence: "high" },
+  /* 以下 5 条由 2026-09-20 周报从「我的食物」转正：三周内各用过 5 次以上，
+     每 100 克为标签实读且通过算术交叉验证。份量按他实际记过的克数重设，
+     原来那种「整瓶 340g」的默认份量不好用。原个人条目见 UF_SAME_AS。 */
+  { id: "tesco-multiseed-bread", name: "Tesco 多种籽面包", per_100g: { kcal: 261, protein: 9.7, fat: 4.5, carb: 43.3 },
+    portions: [{ label: "一片 50g", grams: 50 }, { label: "两片 100g", grams: 100 }, { label: "整包 800g", grams: 800 }], default_portion: "一片 50g", confidence: "high" },
+  { id: "rosedene-gala-apple", name: "Rosedene Farms 佳乐苹果", per_100g: { kcal: 56, protein: 0.6, fat: 0.5, carb: 11.6 },
+    portions: [{ label: "100 g", grams: 100 }, { label: "1 个约 130g", grams: 130 }], default_portion: "100 g", confidence: "high" },
+  { id: "ms-super-seed-peanut-butter", name: "M&S 超级种子花生酱", per_100g: { kcal: 611, protein: 26.3, fat: 51.3, carb: 5.5 },
+    portions: [{ label: "1 勺 20g", grams: 20 }, { label: "薄薄一层 15g", grams: 15 }, { label: "整瓶 340g", grams: 340 }], default_portion: "1 勺 20g", confidence: "high" },
+  { id: "creamfields-quark", name: "Creamfields 低脂干酪（高蛋白）", per_100g: { kcal: 56, protein: 8.9, fat: 0.9, carb: 3.1 },
+    portions: [{ label: "25 g", grams: 25 }, { label: "半份 50g", grams: 50 }, { label: "整包 300g", grams: 300 }], default_portion: "25 g", confidence: "high" },
+  { id: "tesco-wensleydale-apricot", name: "Tesco Wensleydale 奶酪（带杏干）", per_100g: { kcal: 357, protein: 16.8, fat: 24.7, carb: 14.9 },
+    portions: [{ label: "15 g", grams: 15 }, { label: "25 g", grams: 25 }, { label: "整包 200g", grams: 200 }], default_portion: "15 g", confidence: "high" }
 ];
 
 /* ── 个人食物的就地修正（2026-09-12 起没有「已停用」一栏了）──────
@@ -504,7 +525,17 @@ var UF_SAME_AS = {
   "uf-mtkfdrx5": "grahams-cottage-cheese",
   "uf-mtojka7b": "grahams-jersey-whole-milk",
   "uf-mtojgob8": "tesco-plums-suntrail",
-  "uf-mtldygj5": "tesco-beef-quarter-pounder"
+  "uf-mtldygj5": "tesco-beef-quarter-pounder",
+  /* 2026-09-20 周报新增 */
+  "uf-mtwo4ipo": "tesco-multiseed-bread",
+  "uf-mtojkoti": "rosedene-gala-apple",
+  "uf-mtwo43hx": "ms-super-seed-peanut-butter",
+  "uf-mtyn6bi0": "creamfields-quark",
+  "uf-mtojhgy9": "tesco-wensleydale-apricot",
+  "uf-mtwo3mo8": "whole-milk",              /* 扫出来和库里「全脂牛奶」四个数一模一样 */
+  "uf-mtszgo1x": "uf-mu79dwwl",             /* 汤达人扫了三遍，留 9/18 那条（多一个「面饼」份量） */
+  "uf-mu03zusd": "uf-mu79dwwl",
+  "uf-mtojjb9f": "uf-mu044y37"              /* 提卡鸡肉扫了两遍，留重扫那条（数值更准） */
 };
 var UF_FIX = {
   "uf-mtizeexx": { name: "Grissini 意式细面包棒",
@@ -519,7 +550,21 @@ var UF_FIX = {
     default_portion: "整包 240 g",
     note: "AI 识别：能量和营养成分均为标签实读值。",   /* 原注记末尾那条整包警告已在下面解释清楚，不再重复显示 */
     why: "每 100 克四个数自己对得上（碳蛋脂算 123，标签写 124），数值可用。当初报警的是整包那栏：" +
-         "标签上的 74 kcal 是每份约 60 克、不是整包，已把这个份量补成选项。" }
+         "标签上的 74 kcal 是每份约 60 克、不是整包，已把这个份量补成选项。" },
+  /* 2026-09-20 周报：这两条的标签上蛋白质和碳水那两行没识别出来，被当成 0 存进去了。
+     热量是标签实读的、可信，所以热量不动；蛋白和碳水按同类产品的典型比例补上，
+     属于估算值，why 里说清楚了。 */
+  "uf-mu03wur3": { name: "Tesco finest 鳕鱼香菜鱼饼",
+    per_100g: { kcal: 182, protein: 10, fat: 7.1, carb: 19 },
+    why: "标签只读出了热量 182 和脂肪 7.1，蛋白质和碳水当时存成了 0。这里按同类鱼饼" +
+         "（鱼肉＋土豆）的典型比例补成蛋白 10、碳水 19——这样三大营养素加起来约 180，" +
+         "和标签的 182 对得上。这两个数是估的，下次买到重拍一遍标签。" },
+  "uf-mu5y0f76": { name: "Tesco 大蒜香草基辅鸡",
+    per_100g: { kcal: 303, protein: 14, fat: 27, carb: 11 },
+    why: "标签只读出了热量 303 和脂肪 27，蛋白质和碳水当时存成了 0，害得 9/17 那天少算了" +
+         "约 38 克蛋白。这里按典型基辅鸡补成蛋白 14、碳水 11。注意：三大营养素加起来约 343，" +
+         "比标签的 303 高，说明热量和脂肪这两个读数里有一个不对——热量更可信，脂肪存疑。" +
+         "下次买到重拍标签。" }
 };
 
 /* ── 存储（键名一经发布不得更改，设计 §4.6）──────────────── */
