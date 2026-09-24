@@ -1,5 +1,7 @@
 # Calorie Tracker (热量记录)
 
+**English** | [简体中文](README.zh-CN.md)
+
 A single-file, offline-first calorie and macro tracker built for the phone home screen, with AI food recognition, arithmetic cross-checks on everything the model reads, and weekly calibration of the energy-balance constants against real morning-weight data.
 
 **Live:** https://jackieyangjq.github.io/caltrk/ (add it to the iOS home screen; all data stays in the browser). The UI is in Chinese.
@@ -66,13 +68,3 @@ The constants ship in the build rather than in localStorage, so a deploy updates
 - Split the file into modules once it passed about 1,500 lines; a build step would have paid for itself.
 - Add a small test harness for the pure functions: the Atwater check, the recency ranking, day boundaries.
 - Move the calibration fit into the app so the weekly review closes the loop automatically.
-
----
-
-## 中文说明
-
-一个单文件、离线优先的热量与营养素记录网页，放在手机主屏幕上用。拍一餐、拍成分表或打字描述，视觉模型返回结构化数据，程序先做算术交叉验证（热量和碳蛋脂对不对得上、整包热量和每百克乘重量对不对得上），可选第二个模型复核，确认后才入账。每日预算和基准消耗两个常数每周用晨重趋势回归重新校准，随部署更新，不动手机里的记录。
-
-数据只存在浏览器里，除了你主动发给模型的照片和文字，什么都不上传。六周迭代了 24 个版本，见上方变更记录。
-
-在线使用：https://jackieyangjq.github.io/caltrk/
