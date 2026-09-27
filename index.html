@@ -412,7 +412,7 @@
    kcal_target 1900 → 2000（他定的数；分析建议过 2200）：那 18 天他日均吃 2105
    却正好按计划速度在掉，说明 1900 是照着偏低的 2300 算出来的、本来就定严了。 */
 var BUILD = {
-  version: "1.14.0",
+  version: "1.14.1",
   built: "2026-09-27",
   kcal_target: 2000,     // 减脂目标：晨重 82.5kg → 78kg，每周约 −0.4~0.5kg
   tdee: 2600,            // 校准常数，随周报更新；不是当日实测消耗
@@ -538,7 +538,14 @@ var FOOD_LIBRARY = [
     note: "自己做的，由文字估算整理进来（9/20、9/21 各记过一次），数值是常见值估算。" },
   { id: "home-boiled-sweetcorn", name: "煮玉米", per_100g: { kcal: 96, protein: 3.4, fat: 1.5, carb: 21.0 },
     portions: [{ label: "一根约 230g", grams: 230 }], default_portion: "一根约 230g", confidence: "low",
-    note: "由文字估算整理进来（9/21、9/23 各记过一次），按煮熟甜玉米的常见值。" }
+    note: "由文字估算整理进来（9/21、9/23 各记过一次），按煮熟甜玉米的常见值。" },
+  /* 2026-09-27 第二批：同样是 AI 估过、Tesco 官网查得到的烘焙点心 */
+  { id: "tesco-cheese-twist", name: "Tesco 芝士扭扭酥（Cheese Twist）", per_100g: { kcal: 415, protein: 12.5, fat: 23.6, carb: 36.8 },
+    portions: [{ label: "1 个 80g", grams: 80 }], default_portion: "1 个 80g", confidence: "high",
+    note: "Tesco 官网：每 100 克 415 千卡、脂肪 23.6、碳水 36.8，每个 332 千卡；蛋白按每个约 10 克折算。" },
+  { id: "tesco-pain-au-chocolat", name: "Tesco 黄油巧克力可颂（Pain au Chocolat）", per_100g: { kcal: 430, protein: 7.5, fat: 24.6, carb: 44.0 },
+    portions: [{ label: "1 个 76g", grams: 76 }, { label: "2 个 152g", grams: 152 }], default_portion: "1 个 76g", confidence: "high",
+    note: "Tesco 官网 All Butter Pain au Chocolat：每 100 克 430 千卡、脂肪 24.6，每个 327 千卡；蛋白和碳水按能量与同款旧版标签倒推。" }
 ];
 
 /* ── 个人食物的就地修正（2026-09-12 起没有「已停用」一栏了）──────
@@ -636,10 +643,10 @@ var LOG_FIX = {
     why: "9/21 Popeyes 小汉堡：AI 估了 250 克 650 千卡，Popeyes 官网一个是 268 千卡，少 382。" },
   "mucfapuy6yzi": { food_id: "tesco-finest-olive-ciabatta", name: "Tesco finest 橄榄恰巴塔", kcal: 207, protein: 6.9, fat: 4.8, carb: 32.1, ai: false,
     why: "9/22 橄榄恰巴塔：AI 按每 100 克 290 估，Tesco 官网是 243，少 40 千卡。" },
-  "muik28d28y32": { food_id: "waitrose-beef-short-ribs", name: "Waitrose 英国牛肋排（带骨生重）", grams: 210, portion: "210 g", kcal: 531, protein: 39.9, fat: 41.6, carb: 0, ai: false,
-    why: "9/26 牛肋排：一盒约 540 克，你吃了 3/4 即 405 克，按两天记的比例分成 210 + 195 克；官网每 100 克 253 千卡。原来 AI 估 450 克 1350 千卡。" },
-  "mujz9e5jb5pa": { food_id: "waitrose-beef-short-ribs", name: "Waitrose 英国牛肋排（带骨生重）", grams: 195, portion: "195 g", kcal: 493, protein: 37.1, fat: 38.6, carb: 0, ai: false,
-    why: "9/27 牛肋排：同上，195 克。原来 AI 估 420 克 1386 千卡。" },
+  "muik28d28y32": { food_id: "waitrose-beef-short-ribs", name: "Waitrose 英国牛肋排（带骨生重）", grams: 405, portion: "3/4 盒 405g", kcal: 1025, protein: 77.0, fat: 80.2, carb: 0, ai: false, rev: 2,
+    why: "9/26 牛肋排：买了两盒，每天吃一盒的 3/4。Waitrose 官网一盒约 540 克、每 100 克 253 千卡，3/4 盒就是 405 克、1025 千卡。原来 AI 估 450 克 1350 千卡。" },
+  "mujz9e5jb5pa": { food_id: "waitrose-beef-short-ribs", name: "Waitrose 英国牛肋排（带骨生重）", grams: 405, portion: "3/4 盒 405g", kcal: 1025, protein: 77.0, fat: 80.2, carb: 0, ai: false, rev: 2,
+    why: "9/27 牛肋排：同上，第二盒的 3/4，405 克、1025 千卡。原来 AI 估 420 克 1386 千卡。" },
   "muik5plzevun": { food_id: "ms-udon-noodles", name: "M&S 乌冬面（即食，275g 装）", kcal: 408, protein: 11.6, fat: 3.7, carb: 80.0, ai: false,
     why: "9/26 乌冬面：AI 按每 100 克 110 估，M&S 标签是 155，多 119 千卡。" },
   "mujza3rn5tsg": { food_id: "ms-udon-noodles", name: "M&S 乌冬面（即食，275g 装）", kcal: 291, protein: 8.3, fat: 2.6, carb: 57.2, ai: false,
@@ -651,7 +658,17 @@ var LOG_FIX = {
   "mubl93aiz87o": { food_id: "home-boiled-sweetcorn", name: "煮玉米",
     why: "9/21 煮玉米：数值没改，挂到食物库新条目上。" },
   "muefehh1aof2": { food_id: "home-boiled-sweetcorn", name: "煮玉米", carb: 48.3,
-    why: "9/23 煮玉米：挂到食物库新条目上，碳水按同一套数值统一成 48.3（热量没变）。" }
+    why: "9/23 煮玉米：挂到食物库新条目上，碳水按同一套数值统一成 48.3（热量没变）。" },
+  "mtqxkk0fjv68": { food_id: "tesco-cheese-twist", name: "Tesco 芝士扭扭酥（Cheese Twist）", kcal: 315, protein: 9.5, fat: 17.9, carb: 28.0, ai: false,
+    why: "9/7 芝士扭扭酥：AI 按每 100 克 400 估，Tesco 官网是 415，多 11 千卡。" },
+  "mto516r6i6b9": { food_id: "tesco-pain-au-chocolat", name: "Tesco 黄油巧克力可颂（Pain au Chocolat）", portion: "161 g（约 2 个）", kcal: 692, protein: 12.1, fat: 39.6, carb: 70.8, ai: false,
+    why: "9/5 巧克力可颂：161 克约是两个。AI 按每 100 克 350 估，Tesco 官网是 430，多 128 千卡。" },
+  "mtjrn7d4k85q": { food_id: "tesco-all-butter-croissant", name: "Tesco 黄油可颂（All Butter Croissant）", ai: false, kcal: 248, protein: 4.7, fat: 14.9, carb: 23.0,
+    why: "9/2 牛角包：按 Tesco 黄油可颂的官网数值（每 100 克 421）重算，多 8 千卡。" },
+  "mttyd9fednjp": { food_id: "tesco-all-butter-croissant", name: "Tesco 黄油可颂（All Butter Croissant）", ai: false, kcal: 295, protein: 5.5, fat: 17.6, carb: 27.3,
+    why: "9/9 可颂：按 Tesco 黄油可颂的官网数值重算，多 11 千卡。" },
+  "mu6odd2m034d": { food_id: "tesco-all-butter-croissant", name: "Tesco 黄油可颂（All Butter Croissant）", ai: false, kcal: 295, protein: 5.5, fat: 17.6, carb: 27.3,
+    why: "9/18 可颂：按 Tesco 黄油可颂的官网数值重算，多 11 千卡。" }
 };
 var LOG_FIX_FIELDS = ["kcal", "protein", "fat", "carb", "grams", "portion", "food_id", "name", "ai"];
 function applyLogFixes() {
@@ -660,14 +677,17 @@ function applyLogFixes() {
   var changed = false;
   DB.log.forEach(function (e) {
     var fx = LOG_FIX[e.id];
-    if (!fx || done.indexOf(e.id) >= 0) return;
+    /* rev：同一条又改了一次（比如你补充了信息），用新的记账键，保证手机上已经改过一遍的也会再改 */
+    var key = fx && fx.rev ? e.id + "#" + fx.rev : e.id;
+    if (!fx || done.indexOf(key) >= 0) return;
     var orig = {};
     LOG_FIX_FIELDS.forEach(function (k) {
       if (fx.hasOwnProperty(k)) { orig[k] = e.hasOwnProperty(k) ? e[k] : null; e[k] = fx[k]; }
     });
     if (fx.food_id) orig.name_raw = e.name_raw || null;
-    e.orig = orig; e.fix_why = fx.why; e.fixed = "2026-09-27";
-    done.push(e.id); changed = true;
+    if (!e.orig) e.orig = orig;   /* 第二次改时保留最初那份原值 */
+    e.fix_why = fx.why; e.fixed = "2026-09-27";
+    done.push(key); changed = true;
   });
   if (changed) {
     DB.settings.log_fix_done = done;
