@@ -412,8 +412,8 @@
    kcal_target 1900 → 2000（他定的数；分析建议过 2200）：那 18 天他日均吃 2105
    却正好按计划速度在掉，说明 1900 是照着偏低的 2300 算出来的、本来就定严了。 */
 var BUILD = {
-  version: "1.13.1",
-  built: "2026-09-20",
+  version: "1.13.2",
+  built: "2026-09-27",
   kcal_target: 2000,     // 减脂目标：晨重 82.5kg → 78kg，每周约 −0.4~0.5kg
   tdee: 2600,            // 校准常数，随周报更新；不是当日实测消耗
   protein_target: 150,
@@ -754,6 +754,7 @@ var AI_SYS_LABEL = "你是营养标签识别器。只输出一个 JSON 对象，
   '"pack_grams":整包或每份的克数(标签没写就用null),"pack_kcal":同一份量对应的总热量(没写就用null),' +
   '"note":"哪些数字是标签实读、哪些是估算"}。' +
   "规则：多张照片是同一个食物的不同面（外包装/成分表），合并成一条；per_100g 全部用每100克数值；" +
+  "per_100g 只取标签上「每100克」那一列，不要取「每份」那一列；脂肪取总脂肪那一行（不是其中的饱和脂肪），碳水取总碳水那一行（不是其中的糖）；" +
   "标签只给千焦(kJ)时除以4.184换成kcal；pack_grams 和 pack_kcal 必须对应同一份量，照抄标签不要换算；" +
   "看不清或没有的字段按同类食物估算并在 note 里说明；portions 给1-3个常用份量（整包/一份/半盒等，含克数）。";
 var AI_SYS_MEAL = "你是饮食热量估算器。用户给出一餐的照片或文字描述。只输出一个 JSON 对象，不要任何其他文字、不要代码块标记。格式：" +
@@ -768,8 +769,8 @@ function aiRequest(model, sys, userContent) {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": "Bearer " + AI.key },
     signal: ctrl ? ctrl.signal : undefined,
-    /* gpt-5 系列只接受默认 temperature，传 0 会报错 */
-    body: JSON.stringify(/^(gpt-5|o\d)/.test(model)
+    /* gpt-5 / o 系列和 Claude Sonnet 5 只接受默认 temperature，传 0 会报错 */
+    body: JSON.stringify(/^(gpt-5|o\d|claude-sonnet-5)/.test(model)
       ? { model: model, messages: [{ role: "system", content: sys }, { role: "user", content: userContent }] }
       : { model: model, temperature: 0, messages: [{ role: "system", content: sys }, { role: "user", content: userContent }] })
   }).then(function (r) {
