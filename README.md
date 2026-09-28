@@ -4,7 +4,7 @@
 
 A single-file, offline-first calorie and macro tracker built for the phone home screen, with AI food recognition, arithmetic cross-checks on everything the model reads, and weekly calibration of the energy-balance constants against real morning-weight data.
 
-**Live:** https://jackieyangjq.github.io/caltrk/ (add it to the iOS home screen; all data stays in the browser). The UI is in Chinese.
+**Live:** https://jackyyangjq.github.io/caltrk/ (add it to the iOS home screen; all data stays in the browser). The UI is in Chinese.
 
 | Today | AI recognition | Food library |
 |---|---|---|
