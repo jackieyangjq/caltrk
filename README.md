@@ -62,6 +62,7 @@ The constants ship in the build rather than in localStorage, so a deploy updates
 | 1.11 | 2026-09-12 | Two tap targets per food: usual portion and "last N g" |
 | 1.12 | 2026-09-15 | Browse and edit any past day, with guards against logging to the wrong date |
 | 1.13 | 2026-09-20 | Third calibration: constants updated from 18 days of morning weights; label values verified against retailer data |
+| 1.14 | 2026-09-27 | Past log entries can be corrected in place; foods estimated from a text description are saved to "My foods"; nine foods added to the library |
 
 ## What I would do differently
 
