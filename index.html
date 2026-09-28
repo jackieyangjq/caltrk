@@ -108,6 +108,39 @@
   .ai-text-row input { flex: 1; min-width: 0; padding: 10px; border: 1px solid var(--hair); border-radius: 8px;
     background: var(--ground); color: inherit; font-size: 13.5px; }
   .ai-text-row .btn { flex: none; width: auto; padding: 10px 14px; font-size: 13.5px; }
+  /* 条形码：搜索框下两个入口 + 全屏取景层 + 扫码结果面板 */
+  .scan-btns { display: flex; gap: 8px; margin-top: 8px; }
+  .scan-btns .btn { flex: 1; padding: 9px 6px; font-size: 13px; }
+  .scan-ov { position: fixed; inset: 0; z-index: 30; background: #000; color: #fff; }
+  .scan-ov video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .scan-ov .frame {
+    position: absolute; left: 50%; top: 42%; width: min(80vw, 340px); height: min(36vw, 150px);
+    transform: translate(-50%, -50%); border: 2px solid #fff; border-radius: 10px;
+    box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .45);
+  }
+  .scan-ov .frame.hit { border-color: #6FD3A8; }
+  .scan-ov .msg {
+    position: absolute; left: 16px; right: 16px; top: calc(42% + min(18vw, 75px) + 16px);
+    text-align: center; font-family: var(--f-label); font-size: 14px; font-weight: 600; line-height: 1.5;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
+  }
+  .scan-ov .sbar {
+    position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; justify-content: center;
+    padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  }
+  .scan-ov .sbar button {
+    flex: 1; max-width: 140px; padding: 12px 6px; border-radius: 9px; font-family: var(--f-label); text-align: center;
+    font-size: 14px; font-weight: 700; color: #fff; background: rgba(255, 255, 255, .16); border: 1px solid rgba(255, 255, 255, .5);
+  }
+  .scan-ov .sbar button[aria-pressed="true"] { background: #fff; color: #000; }
+  .sgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .sgrid label { display: flex; flex-direction: column; gap: 3px; font-family: var(--f-label); font-size: 10.5px; font-weight: 700; color: var(--text-faint); }
+  .sgrid input { width: 100%; min-width: 0; padding: 9px 5px; border: 1px solid var(--hair); border-radius: 7px; background: var(--ground);
+    color: inherit; font-size: 15px; text-align: right; font-family: var(--f-num); }
+  .sgrid input.bad { border-color: var(--over); }
+  .s-name { width: 100%; padding: 9px 10px; border: 1px solid var(--hair); border-radius: 7px; background: var(--ground); color: inherit; font-size: 15px; }
+  .warnbox { font-size: 12px; line-height: 1.55; color: var(--over); border: 1px solid var(--over); border-radius: 7px; padding: 8px 10px; }
+  .warnbox.ok { color: var(--good); border-color: var(--good); }
   .mrow { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
   .mrow .m-name { flex: 1; min-width: 0; padding: 9px 8px; border: 1px solid var(--hair); border-radius: 7px;
     background: var(--ground); color: inherit; font-size: 13px; }
@@ -355,6 +388,10 @@
         <input id="in-search" type="search" placeholder="搜索食物库…" autocomplete="off">
         <button class="clr" id="btn-clear" style="display:none" aria-label="清除搜索">✕</button>
       </div>
+      <div class="scan-btns">
+        <button class="btn" data-act="scan-live">▥ 扫条形码</button>
+        <button class="btn plain" data-act="scan-photo">🖼 拍条形码照片</button>
+      </div>
       <div id="quick-body"></div>
     </div>
     <div id="ai-mod"></div>
@@ -412,8 +449,8 @@
    kcal_target 1900 → 2000（他定的数；分析建议过 2200）：那 18 天他日均吃 2105
    却正好按计划速度在掉，说明 1900 是照着偏低的 2300 算出来的、本来就定严了。 */
 var BUILD = {
-  version: "1.14.1",
-  built: "2026-09-27",
+  version: "1.15.0",
+  built: "2026-09-28",
   kcal_target: 2000,     // 减脂目标：晨重 82.5kg → 78kg，每周约 −0.4~0.5kg
   tdee: 2600,            // 校准常数，随周报更新；不是当日实测消耗
   protein_target: 150,
@@ -990,6 +1027,8 @@ function aiAddFood(spec) {
   var f = { id: "uf-" + Date.now().toString(36), name: spec.name, per_100g: spec.per_100g,
             portions: spec.portions, default_portion: spec.default_portion,
             confidence: "low", note: nt.slice(0, 300), added: todayStr() };
+  /* 从「扫码查不到 / 数据不对」转过来拍的成分表：记下条形码，下次扫直接出这条 */
+  if (aiBarcode) { f.barcode = aiBarcode; aiBarcode = null; }
   USER_FOODS.push(f);
   persist(UF_KEY, USER_FOODS);
   openPortionSheet(f.id, null);
@@ -1081,11 +1120,13 @@ function aiEstimateMealText(q) {
 }
 /* 拍照入口：label=成分表入库，meal=一餐估算；都支持多选（正面+背面/多角度） */
 var aiMode = "label";
+var aiBarcode = null;
 var aiInput = document.createElement("input");
 aiInput.type = "file"; aiInput.accept = "image/*"; aiInput.multiple = true; aiInput.style.display = "none";
 document.body.appendChild(aiInput);
-function aiPhotoStart(mode) {
+function aiPhotoStart(mode, barcode) {
   aiMode = mode;
+  aiBarcode = (mode === "label" && barcode) ? barcode : null;
   aiInput.value = "";
   aiInput.click();
 }
@@ -1141,6 +1182,420 @@ function aiPhotosReady(urls) {
       openMealSheet(meal);
     });
   }
+}
+
+/* ── 条形码（v1.15.0）─────────────────────────────────────
+   识别：zxing-wasm 3.1.4（开源识别库，WebAssembly），文件放在本仓库 vendor/ 下，第一次点扫码才下载（约 1 MB）。
+   iPhone 的浏览器没有自带条形码识别（BarcodeDetector 到 iOS 26 都不支持），所以统一走这个库。
+   两种扫法：实时取景（getUserMedia）和拍一张照片识别（主屏幕图标里摄像头权限不稳时的退路）。
+   查询：Open Food Facts（免费开放的食品数据库，网友录入）。查到后先给他核对，确认后存进「我的食物」并带
+   barcode 字段，下次扫同一个商品直接从本地出结果；选了「用库里这条」的，关联记在 settings.barcode_map（随导出带出）。 */
+var ZX_BASE = "vendor/zxing-wasm-3.1.4/";
+var ZX_OPTS = { formats: ["EAN13", "EAN8", "UPCA", "UPCE"], tryHarder: true, tryRotate: true, maxNumberOfSymbols: 1 };
+/* 灰度转黑白的三种算法轮流试：默认的局部平均怕模糊，固定阈值怕光照不匀（2026-09-28 用合成照片实测，模糊图只有固定阈值认得出） */
+var ZX_BINS = ["LocalAverage", "FixedThreshold", "GlobalHistogram"];
+function zxOpts(i) { return Object.assign({}, ZX_OPTS, { binarizer: ZX_BINS[i % ZX_BINS.length] }); }
+var zxReady = null;
+function loadZX() {
+  if (zxReady) return zxReady;
+  zxReady = new Promise(function (res, rej) {
+    var base = new URL(ZX_BASE, location.href).href;
+    var s = document.createElement("script");
+    s.src = base + "zxing-reader.js";
+    s.onload = function () {
+      if (!window.ZXingWASM) { rej(new Error("识别组件加载异常")); return; }
+      ZXingWASM.prepareZXingModule({
+        overrides: { locateFile: function (path, prefix) { return /\.wasm$/.test(path) ? base + path : prefix + path; } },
+        fireImmediately: true
+      }).then(function () { res(ZXingWASM); }, function () { rej(new Error("识别组件下载失败（网络？）")); });
+    };
+    s.onerror = function () { rej(new Error("识别组件下载失败（网络？）")); };
+    document.head.appendChild(s);
+  });
+  zxReady.catch(function () { zxReady = null; });   /* 失败了下次点击重新下载 */
+  return zxReady;
+}
+/* 12 位的 UPC-A 补 0 成 EAN-13，本地比对和查询都用同一种写法 */
+function normBarcode(t) {
+  var d = String(t || "").replace(/\D/g, "");
+  return d.length === 12 ? "0" + d : d;
+}
+/* 条形码最后一位是校验位：手输时用来抓输错的一位 */
+function gtinValid(code) {
+  if (!/^\d{8}$|^\d{12,14}$/.test(code)) return false;
+  var sum = 0, n = code.length;
+  for (var i = 0; i < n - 1; i++) sum += Number(code[n - 2 - i]) * (i % 2 === 0 ? 3 : 1);
+  return (10 - sum % 10) % 10 === Number(code[n - 1]);
+}
+
+/* ── 扫法一：实时取景 ── */
+var scanSt = null;
+function scanMsg(t) { var m = document.getElementById("scan-msg"); if (m) m.textContent = t; }
+function scanLiveStart() {
+  scanClose();
+  var ov = document.createElement("div");
+  ov.className = "scan-ov"; ov.id = "scan-ov";
+  ov.setAttribute("role", "dialog"); ov.setAttribute("aria-label", "扫条形码");
+  ov.innerHTML = '<video muted playsinline autoplay></video><div class="frame" id="scan-frame"></div>' +
+    '<div class="msg" id="scan-msg">正在打开摄像头…</div>' +
+    '<div class="sbar"><button data-act="scan-torch" id="scan-torch" aria-pressed="false" style="display:none">手电筒</button>' +
+    '<button data-act="scan-to-photo">改用拍照</button><button data-act="scan-cancel">取消</button></div>';
+  document.body.appendChild(ov);
+  var st = { stopped: false, last: "", timer: null, stream: null, video: ov.querySelector("video"), n: 0,
+             cv: document.createElement("canvas"), torch: false };
+  scanSt = st;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    scanMsg("这个浏览器打不开摄像头。点「改用拍照」，拍一张条形码照片来识别。");
+    return;
+  }
+  /* 先在点击的同一拍里要摄像头，同时并行下载识别组件 */
+  var cam = navigator.mediaDevices.getUserMedia({ audio: false,
+    video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+  Promise.all([cam, loadZX()]).then(function (r) {
+    var stream = r[0];
+    if (st.stopped) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+    st.stream = stream;
+    st.video.srcObject = stream;
+    var p = st.video.play();
+    if (p && p.catch) p.catch(function () {});
+    var track = stream.getVideoTracks()[0];
+    var caps = track && track.getCapabilities ? track.getCapabilities() : null;
+    if (caps && caps.torch) document.getElementById("scan-torch").style.display = "";
+    scanMsg("把条形码放进框里。太近对不上焦，离 15–25 厘米。");
+    scanTick(st);
+  }).catch(function (e) {
+    cam.then(function (s) { s.getTracks().forEach(function (t) { t.stop(); }); }, function () {});
+    if (st.stopped) return;
+    var denied = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
+    scanMsg(denied
+      ? "没有拿到摄像头权限。可以点「改用拍照」；想用取景扫码，就在弹窗里点允许（被拒过的话去 iPhone 设置 → Safari → 相机 改成「询问」）。"
+      : "打不开：" + (e && e.message ? e.message : e) + "。点「改用拍照」试试。");
+  });
+}
+function scanTick(st) {
+  if (st.stopped) return;
+  var v = st.video;
+  if (v.readyState < 2 || !v.videoWidth) { st.timer = setTimeout(function () { scanTick(st); }, 150); return; }
+  /* 只识别画面中间一条横带（比取景框略大），快也准 */
+  var vw = v.videoWidth, vh = v.videoHeight;
+  var cw = Math.round(vw * 0.9), ch = Math.round(Math.min(vh * 0.6, cw * 0.6));
+  var sc = Math.min(1, 1000 / cw);
+  st.cv.width = Math.round(cw * sc); st.cv.height = Math.round(ch * sc);
+  var ctx = st.cv.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(v, (vw - cw) >> 1, (vh - ch) >> 1, cw, ch, 0, 0, st.cv.width, st.cv.height);
+  var img = ctx.getImageData(0, 0, st.cv.width, st.cv.height);
+  ZXingWASM.readBarcodes(img, zxOpts(st.n++)).then(function (rs) {
+    if (st.stopped) return;
+    var hit = (rs || []).filter(function (x) { return x.isValid && x.text; })[0];
+    if (hit) {
+      var code = normBarcode(hit.text);
+      /* 同一个码读到两次才算数，防止偶尔误读 */
+      if (code === st.last) {
+        if (navigator.vibrate) navigator.vibrate(40);
+        scanClose();
+        lookupBarcode(code);
+        return;
+      }
+      st.last = code;
+      var fr = document.getElementById("scan-frame");
+      if (fr) fr.classList.add("hit");
+      scanMsg("读到 " + code + "，再稳住一下…");
+    }
+    st.timer = setTimeout(function () { scanTick(st); }, 90);
+  }, function () {
+    if (!st.stopped) st.timer = setTimeout(function () { scanTick(st); }, 300);
+  });
+}
+function scanTorch(btn) {
+  var st = scanSt;
+  if (!st || !st.stream) return;
+  var track = st.stream.getVideoTracks()[0];
+  st.torch = !st.torch;
+  track.applyConstraints({ advanced: [{ torch: st.torch }] }).catch(function () { st.torch = !st.torch; });
+  btn.setAttribute("aria-pressed", String(st.torch));
+}
+function scanClose() {
+  var st = scanSt;
+  scanSt = null;
+  if (st) {
+    st.stopped = true;
+    if (st.timer) clearTimeout(st.timer);
+    if (st.stream) st.stream.getTracks().forEach(function (t) { t.stop(); });
+  }
+  var ov = document.getElementById("scan-ov");
+  if (ov) ov.parentNode.removeChild(ov);
+}
+
+/* ── 扫法二：拍一张照片识别（相册里现成的也行）── */
+var scanInput = document.createElement("input");
+scanInput.type = "file"; scanInput.accept = "image/*"; scanInput.style.display = "none";
+document.body.appendChild(scanInput);
+function scanPhotoStart() {
+  scanInput.value = "";
+  scanInput.click();
+}
+scanInput.addEventListener("change", function () {
+  var file = scanInput.files && scanInput.files[0];
+  if (!file) return;
+  openSheet('<div class="sheet-h"><div class="nm">正在识别条形码…</div>' +
+    '<div class="meta">第一次用要先下载识别组件（约 1 MB）</div></div><div class="sheet-b" data-bcwait="photo"></div>');
+  var url = URL.createObjectURL(file);
+  var img = new Image();
+  img.onload = function () {
+    loadZX().then(function () {
+      return decodeStill(img);
+    }).then(function (code) {
+      URL.revokeObjectURL(url);
+      if (!elSheet.querySelector('[data-bcwait="photo"]')) return;   /* 等的时候他把面板关了 */
+      if (code) lookupBarcode(code); else openScanFailSheet("照片里没认出条形码。");
+    }).catch(function (e) {
+      URL.revokeObjectURL(url);
+      if (elSheet.querySelector('[data-bcwait="photo"]')) openScanFailSheet(e && e.message ? e.message : "识别出错。");
+    });
+  };
+  img.onerror = function () { URL.revokeObjectURL(url); openScanFailSheet("图片读取失败。"); };
+  img.src = url;
+});
+/* 先缩到长边 1600 识别（快）；认不出再用更高分辨率试（条形码拍得小的时候有用）；每个尺寸三种黑白算法都试 */
+function decodeStill(img) {
+  var big = Math.max(img.naturalWidth, img.naturalHeight);
+  var sizes = [1600];
+  if (big > 1600) sizes.push(Math.min(big, 3000));
+  var si = 0, bi = 0, data = null;
+  function attempt() {
+    if (!data) {
+      var sc = Math.min(1, sizes[si] / big);
+      var cv = document.createElement("canvas");
+      cv.width = Math.round(img.naturalWidth * sc); cv.height = Math.round(img.naturalHeight * sc);
+      var ctx = cv.getContext("2d");
+      ctx.drawImage(img, 0, 0, cv.width, cv.height);
+      data = ctx.getImageData(0, 0, cv.width, cv.height);
+    }
+    return ZXingWASM.readBarcodes(data, zxOpts(bi)).then(function (rs) {
+      var hit = (rs || []).filter(function (x) { return x.isValid && x.text; })[0];
+      if (hit) return normBarcode(hit.text);
+      if (++bi >= ZX_BINS.length) { bi = 0; data = null; if (++si >= sizes.length) return null; }
+      return attempt();
+    });
+  }
+  return attempt();
+}
+function openScanFailSheet(why) {
+  openSheet('<div class="sheet-h"><div class="nm">没扫出来</div><div class="meta">' + esc(why) + '</div></div>' +
+    '<div class="sheet-b">' +
+      '<div class="note">拍的时候让条形码占画面三分之一以上、横着放、别反光。也可以直接输条形码下面那串数字。</div>' +
+      '<div class="field"><label>手动输入条形码数字</label>' +
+      '<input id="in-bc" type="text" inputmode="numeric" autocomplete="off" placeholder="例如 5057753936686"></div>' +
+      '<button class="btn solid" data-act="scan-manual-go">查询这个条形码</button>' +
+      '<div class="scan-btns" style="margin-top:0"><button class="btn" data-act="scan-live">▥ 取景扫码</button>' +
+      '<button class="btn plain" data-act="scan-photo">🖼 再拍一张</button></div>' +
+    '</div>');
+}
+
+/* ── 查询：先本地，再 Open Food Facts ── */
+function barcodeLocal(code) {
+  var map = DB.settings.barcode_map || {};
+  if (map[code] && foodById(map[code])) return UF_SAME_AS[map[code]] || map[code];
+  for (var i = USER_FOODS.length - 1; i >= 0; i--) {
+    if (USER_FOODS[i].barcode === code) return UF_SAME_AS[USER_FOODS[i].id] || USER_FOODS[i].id;
+  }
+  for (var j = 0; j < FOOD_LIBRARY.length; j++) {
+    var b = FOOD_LIBRARY[j].barcodes;   /* 正式条目可选字段：同一商品不同包装可能有几个码 */
+    if (b && b.indexOf(code) >= 0) return FOOD_LIBRARY[j].id;
+  }
+  return null;
+}
+var OFF_FIELDS = "code,product_name,product_name_en,generic_name,brands,quantity,product_quantity,product_quantity_unit," +
+  "serving_size,serving_quantity,nutriments,nutrition_data_per";
+var bcSeq = 0;
+function lookupBarcode(code) {
+  var local = barcodeLocal(code);
+  if (local) { openPortionSheet(local, null); return; }
+  var seq = ++bcSeq;
+  openSheet('<div class="sheet-h"><div class="nm">正在查询…</div><div class="meta">条形码 ' + esc(code) + ' · Open Food Facts</div></div>' +
+    '<div class="sheet-b" data-bcwait="' + seq + '"></div>');
+  function stillWaiting() { return seq === bcSeq && !!elSheet.querySelector('[data-bcwait="' + seq + '"]'); }
+  var ctrl = ("AbortController" in window) ? new AbortController() : null;
+  var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 15000) : null;
+  fetch("https://world.openfoodfacts.org/api/v2/product/" + code + ".json?fields=" + OFF_FIELDS,
+        { signal: ctrl ? ctrl.signal : undefined }).then(function (r) {
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error("数据库返回 HTTP " + r.status);
+    return r.json();
+  }).then(function (j) {
+    if (!stillWaiting()) return;
+    var prod = (j && j.status === 1 && j.product) ? j.product : null;
+    var spec = prod ? offToSpec(prod, code) : null;
+    if (spec) openScanResultSheet(spec);
+    else openScanMissSheet(code, prod && (prod.product_name || prod.product_name_en || prod.generic_name) ? offName(prod, code) : null);
+  }).catch(function (e) {
+    if (!stillWaiting()) return;
+    var msg = e && e.name === "AbortError" ? "查询超时（15 秒）" : (e && e.message ? e.message : "查询失败");
+    openSheet('<div class="sheet-h"><div class="nm">没查成</div><div class="meta">条形码 ' + esc(code) + '</div></div>' +
+      '<div class="sheet-b" data-bc="' + esc(code) + '"><div class="note">' + esc(msg) + '。要联网才能查新商品；扫过的商品以后不联网也能出。' +
+      '这个数据库偶尔会慢几分钟（2026-09-28 实测过一次），过一会儿再查通常就好。</div>' +
+      '<button class="btn solid" data-act="scan-retry">再查一次</button>' +
+      (aiReady() ? '<button class="btn" data-act="scan-ai-label">📷 拍成分表入库</button>' : '') +
+      '<button class="btn plain" data-act="scan-guess">先记一条估计</button></div>');
+  }).finally(function () { if (timer) clearTimeout(timer); });
+}
+function offName(p, code) {
+  var brand = String(p.brands || "").split(",")[0].trim();
+  var nm = String(p.product_name_en || p.product_name || p.generic_name || "").trim();
+  if (brand && nm.toLowerCase().indexOf(brand.toLowerCase()) < 0) nm = brand + " " + nm;
+  return (nm || "条形码 " + code).replace(/\s+/g, " ").slice(0, 40);
+}
+/* Open Food Facts 的一条商品 → 本页的食物格式；没有热量就当查不到 */
+function offToSpec(p, code) {
+  var n = p.nutriments || {}, sq = Number(p.serving_quantity);
+  function val(k) {
+    var v = n[k + "_100g"];
+    if ((v === "" || v == null) && sq > 0 && n[k + "_serving"] != null && n[k + "_serving"] !== "") v = Number(n[k + "_serving"]) * 100 / sq;
+    v = Number(v);
+    return (v === v && isFinite(v) && v >= 0) ? v : null;   /* v === v 排除 NaN */
+  }
+  var kcal = val("energy-kcal");
+  if (kcal == null) { var kj = val("energy-kj"); if (kj == null) kj = val("energy"); if (kj != null) kcal = kj / 4.184; }
+  if (kcal == null || kcal > 900) return null;
+  var r1 = function (x) { return x == null ? null : Math.round(x * 10) / 10; };
+  var per = { kcal: Math.round(kcal), protein: r1(val("proteins")), fat: r1(val("fat")), carb: r1(val("carbohydrates")) };
+  var extra = { fiber: r1(val("fiber")), polyols: r1(val("polyols")), alcohol: r1(val("alcohol")) };
+  var ml = /ml/i.test(String(p.product_quantity_unit || "") + String(p.nutrition_data_per || ""));
+  var ports = [], pq = Number(p.product_quantity), u = ml ? "ml" : "g";
+  if (sq > 0 && sq <= MAX_G) ports.push({ label: "一份（标签）" + Math.round(sq) + u, grams: Math.round(sq) });
+  if (pq > 0 && pq <= MAX_G && Math.round(pq) !== Math.round(sq)) ports.push({ label: "整包 " + Math.round(pq) + u, grams: Math.round(pq) });
+  if (!ports.some(function (x) { return x.grams === 100; })) ports.push({ label: "100 " + u, grams: 100 });
+  var dp = ports[0].label;
+  if (!(sq > 0) && !(pq > 0 && pq <= 500)) dp = "100 " + u;
+  return { code: code, name: offName(p, code), per_100g: per, extra: extra, portions: ports, default_portion: dp, ml: ml };
+}
+/* 算术核对：蛋白×4＋脂肪×9＋碳水×4＋纤维×2（英国标签碳水不含纤维；糖醇按 2.4、酒精按 7）对标称热量 */
+function scanChecks(per, extra) {
+  var w = [];
+  ["protein", "fat", "carb"].forEach(function (k) {
+    if (per[k] == null) w.push({ protein: "蛋白质", fat: "脂肪", carb: "碳水" }[k] + "没有数据，照标签补上再存（空着按 0 算会压低当天数字）");
+  });
+  var P = per.protein || 0, F = per.fat || 0, C = per.carb || 0;
+  var poly = Math.min(extra.polyols || 0, C);
+  var calc = 4 * P + 9 * F + 4 * (C - poly) + 2.4 * poly + 2 * (extra.fiber || 0) + 7 * (extra.alcohol || 0);
+  if (per.kcal >= 20 && Math.abs(calc - per.kcal) > Math.max(20, per.kcal * 0.15)) {
+    w.push("热量和碳蛋脂对不上：标 " + per.kcal + " kcal，按碳蛋脂" + (extra.fiber ? "纤维" : "") + "算约 " + Math.round(calc) + "，可能有人录错了，对着包装核一下");
+  }
+  if (P + F + C > 105) w.push("三大营养素加起来超过 100 g，数据有误");
+  return w;
+}
+/* 库里可能已有同一样东西（名字里的英文词对得上），给他一键改用库里那条 */
+function scanTokens(s) {
+  var stop = { and: 1, with: 1, the: 1, for: 1, from: 1, pack: 1, free: 1 };
+  var out = {};
+  (String(s).toLowerCase().match(/[a-z]{3,}/g) || []).forEach(function (w) { w = w.replace(/s$/, ""); if (!stop[w]) out[w] = 1; });
+  return Object.keys(out);
+}
+function scanSuggest(name) {
+  var a = scanTokens(name);
+  if (a.length < 2) return [];
+  return allFoods().map(function (f) {
+    var b = scanTokens(f.name), common = a.filter(function (w) { return b.indexOf(w) >= 0; }).length;
+    return { f: f, common: common, ratio: common / Math.max(1, Math.min(a.length, b.length)) };
+  }).filter(function (x) { return x.common >= 2 && x.ratio >= 0.5; })
+    .sort(function (x, y) { return y.common - x.common || y.ratio - x.ratio; })
+    .slice(0, 2).map(function (x) { return x.f; });
+}
+var SCAN_DRAFT = null;
+function openScanResultSheet(spec) {
+  SCAN_DRAFT = spec;
+  var per = spec.per_100g, ex = spec.extra, u = spec.ml ? "ml" : "g";
+  function inp(k, label) {
+    return '<label>' + label + '<input data-sper="' + k + '" type="number" inputmode="decimal" min="0" step="0.1" value="' +
+      (per[k] == null ? "" : per[k]) + '"' + (per[k] == null ? ' class="bad"' : '') + '></label>';
+  }
+  var sug = scanSuggest(spec.name).map(function (f) {
+    return '<button class="p" data-act="scan-use-food" data-food="' + f.id + '"><span class="l">用库里这条：' + esc(f.name) + '</span>' +
+      '<span class="g">每 100 g ' + f.per_100g.kcal + ' kcal · 蛋白 ' + f.per_100g.protein + ' g</span></button>';
+  }).join("");
+  var exTxt = [ex.fiber != null ? "纤维 " + ex.fiber + " g" : "纤维 无数据"].concat(
+    ex.polyols ? ["糖醇 " + ex.polyols + " g"] : [], ex.alcohol ? ["酒精 " + ex.alcohol + " g"] : []).join(" · ");
+  openSheet(
+    '<div class="sheet-h"><div class="nm">扫码结果 · 核对后再存</div>' +
+    '<div class="meta">条形码 ' + esc(spec.code) + ' · Open Food Facts（网友录入）</div></div>' +
+    '<div class="sheet-b" data-bc="' + esc(spec.code) + '" style="max-height:78vh;overflow-y:auto">' +
+      '<input class="s-name" id="in-sname" value="' + esc(spec.name) + '" aria-label="名称" maxlength="40">' +
+      '<div class="hint">每 100 ' + u + ' 的数值，可以改：</div>' +
+      '<div class="sgrid">' + inp("kcal", "热量 kcal") + inp("protein", "蛋白 g") + inp("fat", "脂肪 g") + inp("carb", "碳水 g") + '</div>' +
+      '<div class="hint">' + exTxt + (spec.ml ? ' · 饮料按 1 ml ≈ 1 g 记' : '') + '</div>' +
+      '<div id="scan-warn"></div>' +
+      (sug ? '<div class="mod-title" style="margin:4px 0 0">库里可能是同一样东西</div>' + sug : '') +
+      '<button class="btn solid" data-act="scan-save">存进我的食物 → 选份量</button>' +
+      (aiReady() ? '<button class="btn" data-act="scan-ai-label">数据不对 → 拍成分表入库</button>' : '') +
+    '</div>');
+  scanWarnRefresh();
+}
+/* 读面板里四个数；有空的返回 null 值（由核对提示），超范围的标红 */
+function scanReadPer() {
+  var per = {}, bad = false;
+  [["kcal", 900], ["protein", 100], ["fat", 100], ["carb", 100]].forEach(function (d) {
+    var el = elSheet.querySelector('[data-sper="' + d[0] + '"]');
+    var raw = el ? el.value.trim() : "", v = parseFloat(raw);
+    var ok = raw !== "" && v >= 0 && v <= d[1];
+    if (el) el.classList.toggle("bad", !ok);
+    if (raw !== "" && !ok) bad = true;
+    per[d[0]] = ok ? (d[0] === "kcal" ? Math.round(v) : Math.round(v * 10) / 10) : null;
+  });
+  return { per: per, bad: bad };
+}
+function scanWarnRefresh() {
+  var box = document.getElementById("scan-warn");
+  if (!box || !SCAN_DRAFT) return;
+  var r = scanReadPer();
+  var w = r.per.kcal == null ? ["热量要填"] : scanChecks(r.per, SCAN_DRAFT.extra);
+  box.innerHTML = w.length ? '<div class="warnbox">⚠ ' + w.map(esc).join("<br>⚠ ") + '</div>'
+                           : '<div class="warnbox ok">✓ 热量和碳蛋脂纤维对得上</div>';
+}
+function scanSave() {
+  if (!SCAN_DRAFT) return;
+  var r = scanReadPer();
+  if (r.bad || r.per.kcal == null) { scanWarnRefresh(); return; }
+  var warns = scanChecks(r.per, SCAN_DRAFT.extra);
+  var o = SCAN_DRAFT.per_100g, edited = ["kcal", "protein", "fat", "carb"].some(function (k) { return o[k] !== r.per[k]; });
+  var per = { kcal: r.per.kcal, protein: r.per.protein || 0, fat: r.per.fat || 0, carb: r.per.carb || 0 };
+  if (SCAN_DRAFT.extra.fiber != null) per.fiber = SCAN_DRAFT.extra.fiber;
+  var nmEl = document.getElementById("in-sname");
+  var name = (nmEl && nmEl.value.trim()) || SCAN_DRAFT.name;
+  var note = "条形码 " + SCAN_DRAFT.code + " · Open Food Facts" + (edited ? "（数值手动改过）" : "") +
+    (warns.length ? "；⚠ " + warns.join("；") : "；算术核对通过");
+  var f = { id: "uf-" + Date.now().toString(36), name: name.slice(0, 40), per_100g: per,
+            portions: SCAN_DRAFT.portions, default_portion: SCAN_DRAFT.default_portion,
+            confidence: warns.length ? "low" : "high", note: note.slice(0, 300), added: todayStr(),
+            src: "barcode", barcode: SCAN_DRAFT.code };
+  USER_FOODS.push(f);
+  persist(UF_KEY, USER_FOODS);
+  SCAN_DRAFT = null;
+  openPortionSheet(f.id, null);
+}
+function scanUseFood(code, foodId) {
+  if (!code || !foodById(foodId)) return;
+  if (!DB.settings.barcode_map) DB.settings.barcode_map = {};
+  DB.settings.barcode_map[code] = foodId;
+  persist(K.settings, DB.settings);
+  SCAN_DRAFT = null;
+  openPortionSheet(foodId, null);
+}
+function openScanMissSheet(code, name) {
+  openSheet('<div class="sheet-h"><div class="nm">' + (name ? esc(name) : "数据库里没有这个商品") + '</div>' +
+    '<div class="meta">条形码 ' + esc(code) + (name ? ' · 有这个商品，但没有营养数据' : ' · Open Food Facts 查不到') + '</div></div>' +
+    '<div class="sheet-b" data-bc="' + esc(code) + '">' +
+      (aiReady()
+        ? '<button class="btn solid" data-act="scan-ai-label">📷 拍成分表入库</button>' +
+          '<div class="hint">入库时会记下这个条形码，下次扫直接出结果。</div>'
+        : '<div class="note">到「导出」页保存 AI 密钥后，这里可以直接拍成分表入库。</div>') +
+      '<button class="btn" data-act="scan-guess">先记一条估计</button>' +
+    '</div>');
+}
+function scanManualGo(raw) {
+  var code = normBarcode(raw);
+  if (!/^\d{8,14}$/.test(code)) { alert("条形码是 8 到 14 位数字。"); return; }
+  if (!gtinValid(code) && !confirm("这串数字的校验位对不上，可能输错了一位。仍然去查？")) return;
+  lookupBarcode(code);
 }
 
 /* ── 小工具 ─────────────────────────────────────────────── */
@@ -1589,6 +2044,8 @@ function renderBanner() {
   }
   if (storeBroken) {
     html = '<button class="nudge alarm" data-act="go-export">⚠️ 数据存储异常——请立即导出备份<span>去导出 →</span></button>';
+  } else if (!DB.log.length && !DB.weight.length) {
+    html = '<button class="nudge" data-act="go-export">这里还没有记录。换过网址的话，去「导出」页从备份导入<span>去导入 →</span></button>';
   } else if (hour < 11 && !DB.weight.some(function (w) { return w.date === t; }) && !bannerDismissedToday("weight")) {
     html = '<button class="nudge" data-act="go-weight">今晨体重还没记<span style="display:flex;gap:8px;align-items:center">去记 →<span class="x" data-act="dismiss-banner" data-kind="weight">✕</span></span></button>';
   } else if (hour >= 20 && !dayComplete(t) && !bannerDismissedToday("evening")) {
@@ -1715,6 +2172,9 @@ function renderQuickBody() {
     var hits = allFoods().filter(function (f) { return f.name.toLowerCase().indexOf(q) >= 0 || f.id.indexOf(q) >= 0; });
     hits.sort(recentCmp(usageStats()));   /* 最近吃过的排最上面 */
     h += '<div class="results">';
+    /* 输入的是一串 8–14 位数字：多半是手抄的条形码 */
+    var qDigits = searchQuery.replace(/\s/g, "");
+    if (/^\d{8,14}$/.test(qDigits)) h += '<button class="r-guess" data-act="scan-code" data-code="' + qDigits + '">▥ 按条形码 ' + qDigits + ' 查询</button>';
     hits.forEach(function (f) {
       var dp = f.portions.find(function (p) { return p.label === f.default_portion; }) || f.portions[0];
       h += '<button class="r-item" data-act="open-food" data-food="' + f.id + '">' +
@@ -2102,7 +2562,87 @@ function renderExport() {
     '<div class="note">每周一次。文件会出现在「文件」App 的下载项里，' +
     '打开 OneDrive 把它移到 <b style="font-family:var(--f-num)">健康数据/calorie-tracker/exports/</b>。' +
     '这是唯一的备份——手机丢了或清了浏览器数据，没导出的部分就没了。</div></div>' +
+    '<div class="mod"><div class="mod-title">从备份导入</div>' +
+    '<button class="btn" data-act="do-import">选择备份文件（.json）</button>' +
+    '<div class="note">换了网址或换了手机时用：在「文件」App 里进 OneDrive → 健康数据/calorie-tracker/exports/，选最新的「热量日志-日期.json」。' +
+    '只补上这台手机没有的记录，已有的不改不删，重复导入同一个文件也不会记重。AI 密钥不在备份里，要在上面重新填。</div></div>' +
     '<div class="footver">热量记录 v' + BUILD.version + ' · ' + BUILD.built + (storeBroken ? " · ⚠️ 存储异常" : "") + '</div>';
+}
+/* ── 从备份导入（v1.15.0）───────────────────────────────
+   2026-09-28 GitHub 用户名改了，网址从 jackieyangjq.github.io 变成 jackyyangjq.github.io，
+   手机浏览器按网址分开存数据，新网址是空的，所以要能把导出文件读回来。
+   只补这台手机没有的（按 id / 日期+场景 / 日期 / 食物 id 判断），已有的一条不改不删。
+   导完 reloadDB 会把 LOG_FIX 补到旧备份里还没更正过的流水上。 */
+var importInput = document.createElement("input");
+importInput.type = "file"; importInput.accept = ".json,application/json"; importInput.style.display = "none";
+document.body.appendChild(importInput);
+importInput.addEventListener("change", function () {
+  var file = importInput.files && importInput.files[0];
+  if (!file) return;
+  var rd = new FileReader();
+  rd.onload = function () { importBackup(String(rd.result)); };
+  rd.onerror = function () { alert("文件读取失败。"); };
+  rd.readAsText(file);
+});
+function mergeMissing(cur, add, keyFn) {
+  var seen = {}, n = 0;
+  cur.forEach(function (x) { seen[keyFn(x)] = 1; });
+  (Array.isArray(add) ? add : []).forEach(function (x) {
+    if (!x || typeof x !== "object") return;
+    var k = keyFn(x);
+    if (k == null || seen[k]) return;
+    seen[k] = 1; cur.push(x); n++;
+  });
+  return n;
+}
+function importBackup(txt) {
+  var d;
+  try { d = JSON.parse(txt); } catch (e) { alert("这不是有效的备份文件（读不懂里面的内容）。"); return; }
+  if (!d || d.schema !== "caltrk-export.v1" || !Array.isArray(d.log)) { alert("这不是热量记录导出的备份文件。"); return; }
+  if (storeBroken) { alert("本机存储异常，先别导入：请先导出现有数据。"); return; }
+  reloadDB(); USER_FOODS = loadArr(UF_KEY);   /* 以存储里最新的为准 */
+  var nx = { log: DB.log.slice(), weight: DB.weight.slice(), days: DB.days.slice(), training: DB.training.slice(), uf: USER_FOODS.slice() };
+  var c = {
+    log: mergeMissing(nx.log, d.log, function (e) { return e.id || null; }),
+    weight: mergeMissing(nx.weight, d.weight, function (w) { return w.date ? w.date + "|" + w.context : null; }),
+    days: mergeMissing(nx.days, d.days, function (x) { return x.date || null; }),
+    training: mergeMissing(nx.training, d.training, function (x) { return x.date || null; }),
+    uf: mergeMissing(nx.uf, d.user_foods, function (f) { return f.id || null; })
+  };
+  /* 设置：流水更正记账取并集，条形码关联补缺，其余只补这台手机没有的键 */
+  var st = JSON.parse(JSON.stringify(DB.settings)), stN = 0, ds = d.settings;
+  if (ds && typeof ds === "object" && !Array.isArray(ds)) {
+    Object.keys(ds).forEach(function (k) {
+      if (k === "log_fix_done" && Array.isArray(ds[k])) {
+        var have = Array.isArray(st[k]) ? st[k] : [];
+        ds[k].forEach(function (x) { if (have.indexOf(x) < 0) { have.push(x); stN++; } });
+        st[k] = have;
+      } else if (k === "barcode_map" && ds[k] && typeof ds[k] === "object") {
+        if (!st[k]) st[k] = {};
+        Object.keys(ds[k]).forEach(function (b) { if (!st[k][b]) { st[k][b] = ds[k][b]; stN++; } });
+      } else if (!(k in st)) { st[k] = ds[k]; stN++; }
+    });
+  }
+  if (!st.last_export_confirm && d.exported_at) { st.last_export_confirm = d.exported_at; stN++; }
+  var total = c.log + c.weight + c.days + c.training + c.uf;
+  if (!total) { alert("备份里的记录这台手机都有了，不用导入。"); return; }
+  if (!confirm("备份导出于 " + (d.exported_at || "?") + "（v" + (d.app_version || "?") + "）。\n" +
+      "会补上这台手机没有的：\n· 摄入记录 " + c.log + " 条\n· 体重 " + c.weight + " 次\n· 记全标记 " + c.days +
+      " 天\n· 训练 " + c.training + " 天\n· 我的食物 " + c.uf + " 个\n已有的记录一条都不改。导入？")) return;
+  /* 按时间排好：「上次克数」等功能从后往前找最近一条 */
+  nx.log.sort(function (a, b) { return (a.ts || "") < (b.ts || "") ? -1 : (a.ts || "") > (b.ts || "") ? 1 : 0; });
+  persist(K.log, nx.log);
+  persist(K.weight, nx.weight);
+  persist(K.days, nx.days);
+  persist(K.training, nx.training);
+  persist(UF_KEY, nx.uf);
+  persist(K.settings, st);
+  reloadDB(); USER_FOODS = loadArr(UF_KEY);
+  VIEWS[activeTab()]();
+  renderBanner();
+  alert(storeBroken ? "导入时存储写入失败，请截图并联系分析端。" :
+    "导入完成：现在共 " + DB.log.length + " 条摄入记录、" + DB.weight.length + " 次体重。" +
+    (aiReady() ? "" : "\nAI 密钥不在备份里，记得在这一页重新填。"));
 }
 function doExport() {
   var payload = {
@@ -2110,7 +2650,8 @@ function doExport() {
     exported_at: nowTs(),
     app_version: BUILD.version,
     log: DB.log, weight: DB.weight, days: DB.days, training: DB.training,
-    user_foods: USER_FOODS
+    user_foods: USER_FOODS,
+    settings: DB.settings   /* v1.15.0 起带上：条形码关联、已做过的流水更正等。AI 密钥不在这里，不会导出 */
   };
   /* 附带解析失败时抢救下来的原始串，供电脑侧恢复 */
   var baks = {};
@@ -2157,7 +2698,8 @@ document.querySelector(".tabs").addEventListener("click", function (ev) {
 });
 
 /* 快速连点保护：这些动作依赖面板还开着 */
-var NEED_SHEET = { "pick-portion": 1, "pick-grams": 1, "confirm-grams": 1, "confirm-guess": 1, "delete-entry": 1, "pick-amount": 1, "meal-del": 1, "meal-confirm": 1, "ai-entry-save": 1 };
+var NEED_SHEET = { "pick-portion": 1, "pick-grams": 1, "confirm-grams": 1, "confirm-guess": 1, "delete-entry": 1, "pick-amount": 1, "meal-del": 1, "meal-confirm": 1, "ai-entry-save": 1,
+                   "scan-save": 1, "scan-use-food": 1, "scan-ai-label": 1, "scan-manual-go": 1, "scan-retry": 1, "scan-guess": 1 };
 document.addEventListener("click", function (ev) {
   var b = ev.target.closest("[data-act]");
   if (!b) return;
@@ -2267,6 +2809,23 @@ document.addEventListener("click", function (ev) {
     closeSheet();
     renderToday();
   }
+  else if (act === "scan-live") { closeSheet(); scanLiveStart(); }
+  else if (act === "scan-photo") { closeSheet(); scanPhotoStart(); }
+  else if (act === "scan-to-photo") { scanClose(); scanPhotoStart(); }
+  else if (act === "scan-cancel") scanClose();
+  else if (act === "scan-torch") scanTorch(b);
+  else if (act === "scan-code") scanManualGo(b.getAttribute("data-code"));
+  else if (act === "scan-manual-go") { var bcEl = document.getElementById("in-bc"); scanManualGo(bcEl ? bcEl.value : ""); }
+  else if (act === "scan-retry") lookupBarcode(sheetB.getAttribute("data-bc"));
+  else if (act === "scan-save") scanSave();
+  else if (act === "scan-use-food") scanUseFood(sheetB.getAttribute("data-bc"), b.getAttribute("data-food"));
+  else if (act === "scan-ai-label") {
+    var bcA = sheetB.getAttribute("data-bc");
+    SCAN_DRAFT = null;
+    closeSheet();
+    if (!aiBusy) aiPhotoStart("label", bcA);
+  }
+  else if (act === "scan-guess") openGuessSheet("", null);
   else if (act === "save-ai-key") saveAiKey();
   else if (act === "ai-label-photo") { if (!aiBusy) aiPhotoStart("label"); }
   else if (act === "ai-meal-photo") { if (!aiBusy) aiPhotoStart("meal"); }
@@ -2334,6 +2893,7 @@ document.addEventListener("click", function (ev) {
   else if (act === "kg-plus") stepKg(0.1);
   else if (act === "save-weight") saveWeight();
   else if (act === "do-export") doExport();
+  else if (act === "do-import") { importInput.value = ""; importInput.click(); }
 }, true);
 
 /* 估餐确认面板：名字/克数即时生效，热量跟着变 */
@@ -2348,6 +2908,8 @@ document.addEventListener("input", function (ev) {
       t.classList.toggle("bad", !!t.value && !(g > 0 && g <= MAX_G));
       mealRecalc();
     }
+  } else if (t.hasAttribute("data-sper")) {
+    scanWarnRefresh();
   } else if (t.hasAttribute("data-mname")) {
     var j = parseInt(t.getAttribute("data-mname"), 10);
     if (MEAL_DRAFT && MEAL_DRAFT.items[j]) MEAL_DRAFT.items[j].name = t.value.slice(0, 30);
@@ -2401,7 +2963,9 @@ function refreshIfNeeded(force) {
 }
 /* 切回前台：先从存储重读（防旧标签页用过期内存覆盖新记录），再判断要不要重绘 */
 var hiddenAt = 0;
-document.addEventListener("visibilitychange", function () { if (document.hidden) hiddenAt = Date.now(); });
+document.addEventListener("visibilitychange", function () {
+  if (document.hidden) { hiddenAt = Date.now(); scanClose(); }   /* 切走就关摄像头 */
+});
 function onVisible() {
   if (document.hidden) return;
   /* 翻回过去某天改完就切走了，隔了 REVERT_MIN 分钟再回来当作新的一次使用：跳回今天 */

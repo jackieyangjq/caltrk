@@ -63,6 +63,7 @@ The constants ship in the build rather than in localStorage, so a deploy updates
 | 1.12 | 2026-09-15 | Browse and edit any past day, with guards against logging to the wrong date |
 | 1.13 | 2026-09-20 | Third calibration: constants updated from 18 days of morning weights; label values verified against retailer data |
 | 1.14 | 2026-09-27 | Past log entries can be corrected in place; foods estimated from a text description are saved to "My foods"; nine foods added to the library |
+| 1.15 | 2026-09-28 | Barcode scanning (live camera or a photo) with nutrition from Open Food Facts; import from a backup file (needed after the GitHub username change moved the site to a new address) |
 
 ## What I would do differently
 
