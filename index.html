@@ -449,7 +449,7 @@
    kcal_target 1900 → 2000（他定的数；分析建议过 2200）：那 18 天他日均吃 2105
    却正好按计划速度在掉，说明 1900 是照着偏低的 2300 算出来的、本来就定严了。 */
 var BUILD = {
-  version: "1.15.0",
+  version: "1.15.1",
   built: "2026-09-28",
   kcal_target: 2000,     // 减脂目标：晨重 82.5kg → 78kg，每周约 −0.4~0.5kg
   tdee: 2600,            // 校准常数，随周报更新；不是当日实测消耗
@@ -866,6 +866,14 @@ function modelSelHtml(id, inId, opts, current) {
 }
 var USER_FOODS = loadArr(UF_KEY);
 function aiReady() { return !!(AI.key && AI.key.length > 8); }
+/* 没密钥时点 AI 按钮：跳到「导出」页的密钥框，并在那里显示一行提示 */
+var aiKeyNudge = false;
+function aiNeedKey() {
+  aiKeyNudge = true;
+  switchTab("export");
+  var inp = document.getElementById("ai-key-in");
+  if (inp) { inp.scrollIntoView({ block: "center" }); inp.focus(); }
+}
 /* 个人食物一律经这里取用：UF_FIX 的修正就地盖上去，localStorage 里的原条目不动 */
 function ufView(f) {
   var fx = UF_FIX[f.id], o = {
@@ -2150,16 +2158,17 @@ function renderAiMod() {
   if (aiReady() && aiBusy) {
     h += '<div class="ai-btns"><button class="btn" disabled>识别中…</button></div>' +
       '<div class="hint">AI 正在分析，最多约一分钟。</div>';
-  } else if (aiReady()) {
+  } else {
+    /* 没填密钥也照样显示按钮（点了带去填密钥）：2026-09-28 换网址后密钥没了，按钮整个藏起来，他以为功能被删了 */
     h += '<div class="ai-btns">' +
       '<button class="btn solid" data-act="ai-meal-photo">🍽 拍这一餐</button>' +
       '<button class="btn" data-act="ai-label-photo">📷 拍成分表入库</button></div>' +
       '<div class="ai-text-row">' +
       '<input id="ai-meal-text" type="text" placeholder="或文字描述这一餐…">' +
       '<button class="btn" data-act="ai-meal-text">估算</button></div>' +
-      '<div class="hint">可多选照片（正面＋成分表算同一个）；选好照片才调用 AI；估算先确认再记录。文字估算的每样东西确认后会存进「我的食物」，下次直接点。</div>';
-  } else {
-    h += '<div class="hint">先到「导出」页保存 ChatAnywhere 密钥，就能拍照或文字估算一餐、拍成分表入库。</div>';
+      (aiReady()
+        ? '<div class="hint">可多选照片（正面＋成分表算同一个）；选好照片才调用 AI；估算先确认再记录。文字估算的每样东西确认后会存进「我的食物」，下次直接点。</div>'
+        : '<div class="hint" style="color:var(--over)">还没填 AI 密钥（换了网址或清过浏览器数据后要重新填）。点上面任一按钮会带你去「导出」页填。</div>');
   }
   el.innerHTML = h + '</div>';
 }
@@ -2545,6 +2554,7 @@ function renderExport() {
     (storeBroken ? '<div class="note" style="color:var(--over)">⚠️ 检测到存储异常。导出文件里已附带抢救出的原始数据，请尽快导出并联系分析端。</div>' : '') +
     '</div>' +
     '<div class="mod"><div class="mod-title">AI 识别（自带密钥）</div>' +
+    (aiKeyNudge && !aiReady() ? '<div class="warnbox">先在下面粘贴 ChatAnywhere 密钥、点「保存设置」，再回「今日」页拍照或估算。</div>' : '') +
     '<div class="rowline"><span class="k">状态</span><span class="v">' +
       (aiReady() ? "已启用 · " + AI.model : "未设置") + '</span></div>' +
     '<input id="ai-key-in" type="password" autocomplete="off" placeholder="粘贴密钥（留空=不改；输「清除」=删掉）" ' +
@@ -2827,11 +2837,12 @@ document.addEventListener("click", function (ev) {
   }
   else if (act === "scan-guess") openGuessSheet("", null);
   else if (act === "save-ai-key") saveAiKey();
-  else if (act === "ai-label-photo") { if (!aiBusy) aiPhotoStart("label"); }
-  else if (act === "ai-meal-photo") { if (!aiBusy) aiPhotoStart("meal"); }
+  else if (act === "ai-label-photo") { if (!aiReady()) aiNeedKey(); else if (!aiBusy) aiPhotoStart("label"); }
+  else if (act === "ai-meal-photo") { if (!aiReady()) aiNeedKey(); else if (!aiBusy) aiPhotoStart("meal"); }
   else if (act === "ai-meal-text") {
     var mtEl = document.getElementById("ai-meal-text");
-    if (!aiBusy) aiEstimateMealText(mtEl ? mtEl.value.trim() : "");
+    if (!aiReady()) aiNeedKey();
+    else if (!aiBusy) aiEstimateMealText(mtEl ? mtEl.value.trim() : "");
   }
   else if (act === "meal-del") {
     var mi = parseInt(b.getAttribute("data-i"), 10);
